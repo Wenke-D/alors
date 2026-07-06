@@ -1,15 +1,31 @@
 {
   "name": "vafile",
-  "displayName": "vafile syntax",
-  "description": "Syntax highlighting for va's vafile command-runner format.",
+  "displayName": "vafile — va project CLI",
+  "description": "Syntax highlighting for vafile, the goals file for va — a CLI for your project.",
   "version": "0.0.1",
-  "publisher": "va",
+  "publisher": "wenke",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
     "Programming Languages"
   ],
+  "keywords": [
+    "vafile",
+    "va",
+    "cli",
+    "syntax highlighting"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Wenke-D/va.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/Wenke-D/va/tree/main/editors/vscode",
+  "bugs": {
+    "url": "https://github.com/Wenke-D/va/issues"
+  },
   "contributes": {
     "languages": [
       {

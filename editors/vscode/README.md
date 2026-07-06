@@ -1,6 +1,6 @@
 # vafile syntax (VS Code)
 
-Syntax highlighting for va's `vafile` command-runner format.
+Syntax highlighting for `vafile`, the goals file for va — a CLI for your project.
 
 Highlights:
 

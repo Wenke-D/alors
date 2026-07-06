@@ -4,5 +4,8 @@
 # Distribution binaries built by hand (see README)
 /dist
 
+# VS Code extension packages
+*.vsix
+
 # macOS
 .DS_Store

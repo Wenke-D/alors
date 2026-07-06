@@ -2,7 +2,7 @@
 name = "va"
 version = "0.2.0"
 edition = "2021"
-description = "A disciplined command runner: runs named goals defined in a vafile."
+description = "A CLI for your project: runs named goals defined in a vafile."
 license = "MIT"
 
 [[bin]]
