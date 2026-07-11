@@ -1,30 +1,30 @@
-//! Executor: runs a resolved recipe — its dependency closure first, then itself.
+//! Executor: runs a resolved task — its dependency closure first, then itself.
 //!
 //! The run order comes from `validate::plan` (deps-first, deduped, root last),
-//! which also binds each step's arguments: the invoked goal gets its CLI args,
+//! which also binds each step's arguments: the invoked task gets its CLI args,
 //! and a dependency gets the args its edge declared (with `{{param}}` forwarded
-//! from the declaring recipe). Each recipe's body is one shell invocation, so `cd`
-//! and variables persist across its lines (but not across recipes). Bodies run
-//! with `set -e`, so a body aborts on its first failing command; a goal opts out
+//! from the declaring task). Each task's body is one shell invocation, so `cd`
+//! and variables persist across its lines (but not across tasks). Bodies run
+//! with `set -e`, so a body aborts on its first failing command; a task opts out
 //! by starting with `set +e`. The first non-zero exit aborts the sequence. A
 //! body's commands are echoed to stderr (bold on a TTY) just before it runs.
 //!
 //! Parameters are made available two ways: as environment variables and via
 //! `{{name}}` substitution in the body text.
 
-use crate::parser::{Recipe, Vafile};
+use crate::parser::{Task, Viafile};
 use crate::resolver::Resolved;
 use crate::validate::plan;
 use std::process::Command;
 
-pub fn execute(vafile: &Vafile, resolved: &Resolved) -> i32 {
-    // The plan threads arguments through the graph: the invoked goal gets its
+pub fn execute(viafile: &Viafile, resolved: &Resolved) -> i32 {
+    // The plan threads arguments through the graph: the invoked task gets its
     // CLI args, and each dependency gets the args its edge declared.
-    let order = plan(vafile, &resolved.recipe.path, &resolved.args);
+    let order = plan(viafile, &resolved.task.path, &resolved.args);
 
     for node in &order {
-        let recipe = vafile.get(&node.path).expect("planned recipe exists");
-        let code = run_recipe(recipe, &node.args);
+        let task = viafile.get(&node.path).expect("planned task exists");
+        let code = run_task(task, &node.args);
         if code != 0 {
             return code;
         }
@@ -32,7 +32,7 @@ pub fn execute(vafile: &Vafile, resolved: &Resolved) -> i32 {
     0
 }
 
-/// Echo a recipe's commands to stderr just before they run — bold on a TTY — so
+/// Echo a task's commands to stderr just before they run — bold on a TTY — so
 /// it's visible what executed (as `just` does). Blank and comment-only lines are
 /// skipped, and the internal `set -e` is never shown (it isn't part of the body).
 /// Styling is dropped when stderr isn't a terminal or `NO_COLOR` is set, so piped
@@ -53,9 +53,9 @@ fn print_commands(script: &str) {
     }
 }
 
-fn run_recipe(recipe: &Recipe, args: &[(String, String)]) -> i32 {
+fn run_task(task: &Task, args: &[(String, String)]) -> i32 {
     // Substitute {{param}} occurrences in the body.
-    let mut script = recipe.body.join("\n");
+    let mut script = task.body.join("\n");
     for (name, value) in args {
         script = script.replace(&format!("{{{{{}}}}}", name), value);
     }
@@ -68,10 +68,10 @@ fn run_recipe(recipe: &Recipe, args: &[(String, String)]) -> i32 {
     // Echo the commands about to run (like `just`), so what executed is visible.
     print_commands(&script);
 
-    // Bodies fail-fast: a non-zero command aborts the goal, in keeping with the
+    // Bodies fail-fast: a non-zero command aborts the task, in keeping with the
     // deps-first "stop on first failure" model (and `just`/`make`). Prepending
     // `set -e` keeps the single shell session, so `cd`/vars still persist across
-    // lines; a goal that wants continue-on-error starts its body with `set +e`.
+    // lines; a task that wants continue-on-error starts its body with `set +e`.
     let script = format!("set -e\n{script}");
 
     let mut cmd = Command::new("sh");
@@ -86,8 +86,8 @@ fn run_recipe(recipe: &Recipe, args: &[(String, String)]) -> i32 {
         Ok(status) => status.code().unwrap_or(1),
         Err(e) => {
             eprintln!(
-                "va: failed to execute recipe `{}`: {}",
-                recipe.display_name(),
+                "via: failed to execute task `{}`: {}",
+                task.display_name(),
                 e
             );
             1

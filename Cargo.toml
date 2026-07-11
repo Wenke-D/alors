@@ -1,10 +1,10 @@
 [package]
-name = "va"
+name = "via"
 version = "0.2.0"
 edition = "2021"
-description = "A CLI for your project: runs named goals defined in a vafile."
+description = "A CLI for your project: runs named tasks defined in a viafile."
 license = "MIT"
 
 [[bin]]
-name = "va"
+name = "via"
 path = "src/main.rs"

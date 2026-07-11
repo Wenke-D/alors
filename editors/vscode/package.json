@@ -1,7 +1,7 @@
 {
-  "name": "vafile",
-  "displayName": "vafile — va project CLI",
-  "description": "Syntax highlighting for vafile, the goals file for va — a CLI for your project.",
+  "name": "viafile",
+  "displayName": "viafile — via project CLI",
+  "description": "Syntax highlighting for viafile, the tasks file for via — a CLI for your project.",
   "version": "0.0.1",
   "publisher": "wenke",
   "license": "MIT",
@@ -12,45 +12,45 @@
     "Programming Languages"
   ],
   "keywords": [
-    "vafile",
-    "va",
+    "viafile",
+    "via",
     "cli",
     "syntax highlighting"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Wenke-D/va.git",
+    "url": "https://github.com/Wenke-D/via.git",
     "directory": "editors/vscode"
   },
-  "homepage": "https://github.com/Wenke-D/va/tree/main/editors/vscode",
+  "homepage": "https://github.com/Wenke-D/via/tree/main/editors/vscode",
   "bugs": {
-    "url": "https://github.com/Wenke-D/va/issues"
+    "url": "https://github.com/Wenke-D/via/issues"
   },
   "contributes": {
     "languages": [
       {
-        "id": "vafile",
+        "id": "viafile",
         "aliases": [
-          "vafile",
-          "Vafile"
+          "viafile",
+          "Viafile"
         ],
         "filenames": [
-          "vafile"
+          "viafile"
         ],
         "filenamePatterns": [
-          "*vafile"
+          "*viafile"
         ],
         "extensions": [
-          ".vafile"
+          ".viafile"
         ],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "vafile",
-        "scopeName": "source.vafile",
-        "path": "./syntaxes/vafile.tmLanguage.json"
+        "language": "viafile",
+        "scopeName": "source.viafile",
+        "path": "./syntaxes/viafile.tmLanguage.json"
       }
     ]
   }

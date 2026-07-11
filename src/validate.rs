@@ -1,64 +1,64 @@
 //! Phase-1 static validation of the dependency graph, plus the execution plan.
 //!
-//! This runs *before anything executes*, honoring va's rule that every failure
+//! This runs *before anything executes*, honoring via's rule that every failure
 //! is explicit and nothing is run on an unsound file. Design choices:
 //!   - Whole-file: the entire graph is validated, not just the subgraph reachable
-//!     from the invoked goal — a vafile is valid or it isn't, regardless of which
-//!     goal you ran.
+//!     from the invoked task — a viafile is valid or it isn't, regardless of which
+//!     task you ran.
 //!   - Aggregate: all edge-resolution errors are collected and reported together.
 //!   - Cycle detection runs only once every edge is known-good (so it can never
 //!     trip over a dangling reference), and reports the offending path.
 //!
-//! Execution order (`plan`) is a deduped, deps-first, post-order DFS: each recipe
+//! Execution order (`plan`) is a deduped, deps-first, post-order DFS: each task
 //! runs at most once per invocation, dependencies before dependents.
 
-use crate::parser::{Param, Vafile};
+use crate::parser::{Param, Viafile};
 use std::collections::HashSet;
 
 #[derive(Debug)]
 pub enum ValidateError {
-    /// A dependency names a goal that does not exist.
+    /// A dependency names a task that does not exist.
     UnknownDependency {
         source: String,
         line: usize,
-        recipe: String,
+        task: String,
         dep: String,
     },
-    /// A dependency supplies fewer arguments than the target goal requires.
+    /// A dependency supplies fewer arguments than the target task requires.
     DependencyNeedsArgs {
         source: String,
         line: usize,
-        recipe: String,
+        task: String,
         dep: String,
         required: Vec<String>,
     },
-    /// A dependency supplies more arguments than the target goal accepts.
+    /// A dependency supplies more arguments than the target task accepts.
     DependencyTooManyArgs {
         source: String,
         line: usize,
-        recipe: String,
+        task: String,
         dep: String,
         got: usize,
         max: usize,
     },
-    /// A dependency argument references a `{{param}}` the declaring recipe lacks.
+    /// A dependency argument references a `{{param}}` the declaring task lacks.
     DependencyUnknownParam {
         source: String,
         line: usize,
-        recipe: String,
+        task: String,
         dep: String,
         param: String,
     },
-    /// A dependency points at a namespace with no default goal (not runnable).
+    /// A dependency points at a namespace with no default task (not runnable).
     DependencyIsNamespace {
         source: String,
         line: usize,
-        recipe: String,
+        task: String,
         dep: String,
         available: Vec<String>,
     },
     /// The dependency graph contains a cycle; `path` is the offending loop.
-    /// `line`/`source` point at the header of the first goal in the loop.
+    /// `line`/`source` point at the header of the first task in the loop.
     Cycle {
         source: String,
         line: usize,
@@ -72,17 +72,17 @@ impl std::fmt::Display for ValidateError {
             ValidateError::UnknownDependency {
                 source,
                 line,
-                recipe,
+                task,
                 dep,
             } => write!(
                 f,
-                "{}:{}: `{}` depends on `{}`, which is not a defined goal",
-                source, line, recipe, dep
+                "{}:{}: `{}` depends on `{}`, which is not a defined task",
+                source, line, task, dep
             ),
             ValidateError::DependencyNeedsArgs {
                 source,
                 line,
-                recipe,
+                task,
                 dep,
                 required,
             } => write!(
@@ -90,7 +90,7 @@ impl std::fmt::Display for ValidateError {
                 "{}:{}: `{}` depends on `{}`, which needs argument(s) {}; pass them like `{} <value>`",
                 source,
                 line,
-                recipe,
+                task,
                 dep,
                 required.join(", "),
                 dep
@@ -98,38 +98,38 @@ impl std::fmt::Display for ValidateError {
             ValidateError::DependencyTooManyArgs {
                 source,
                 line,
-                recipe,
+                task,
                 dep,
                 got,
                 max,
             } => write!(
                 f,
                 "{}:{}: `{}` passes {} argument(s) to `{}`, which takes at most {}",
-                source, line, recipe, got, dep, max
+                source, line, task, got, dep, max
             ),
             ValidateError::DependencyUnknownParam {
                 source,
                 line,
-                recipe,
+                task,
                 dep,
                 param,
             } => write!(
                 f,
                 "{}:{}: `{}`'s dependency `{}` references parameter `{}`, which `{}` does not declare",
-                source, line, recipe, dep, param, recipe
+                source, line, task, dep, param, task
             ),
             ValidateError::DependencyIsNamespace {
                 source,
                 line,
-                recipe,
+                task,
                 dep,
                 available,
             } => write!(
                 f,
-                "{}:{}: `{}` depends on `{}`, which is a namespace, not a runnable goal (subcommands: {})",
+                "{}:{}: `{}` depends on `{}`, which is a namespace, not a runnable task (subcommands: {})",
                 source,
                 line,
-                recipe,
+                task,
                 dep,
                 available.join(", ")
             ),
@@ -141,19 +141,19 @@ impl std::fmt::Display for ValidateError {
 }
 
 /// Validate the whole dependency graph. Returns every problem found.
-pub fn validate(vafile: &Vafile) -> Result<(), Vec<ValidateError>> {
+pub fn validate(viafile: &Viafile) -> Result<(), Vec<ValidateError>> {
     let mut errors = Vec::new();
 
-    // Phase A: every dependency edge must resolve to a runnable goal, and its
-    // arguments must fit that goal's parameters.
-    for recipe in vafile.recipes.values() {
-        let from = recipe.display_name();
-        let line = recipe.line;
-        let source = recipe.source.clone();
-        let own_params: Vec<&str> = recipe.params.iter().map(|p| p.name.as_str()).collect();
-        for dep in &recipe.deps {
+    // Phase A: every dependency edge must resolve to a runnable task, and its
+    // arguments must fit that task's parameters.
+    for task in viafile.tasks.values() {
+        let from = task.display_name();
+        let line = task.line;
+        let source = task.source.clone();
+        let own_params: Vec<&str> = task.params.iter().map(|p| p.name.as_str()).collect();
+        for dep in &task.deps {
             let dep_name = dep.path.join("::");
-            match vafile.get(&dep.path) {
+            match viafile.get(&dep.path) {
                 Some(target) => {
                     let got = dep.args.len();
                     let max = target.params.len();
@@ -168,7 +168,7 @@ pub fn validate(vafile: &Vafile) -> Result<(), Vec<ValidateError>> {
                         errors.push(ValidateError::DependencyNeedsArgs {
                             source: source.clone(),
                             line,
-                            recipe: from.clone(),
+                            task: from.clone(),
                             dep: dep_name.clone(),
                             required: missing,
                         });
@@ -176,21 +176,21 @@ pub fn validate(vafile: &Vafile) -> Result<(), Vec<ValidateError>> {
                         errors.push(ValidateError::DependencyTooManyArgs {
                             source: source.clone(),
                             line,
-                            recipe: from.clone(),
+                            task: from.clone(),
                             dep: dep_name.clone(),
                             got,
                             max,
                         });
                     }
                     // A `{{param}}` in a dep argument must name one of *this*
-                    // recipe's parameters (that's the value that gets forwarded).
+                    // task's parameters (that's the value that gets forwarded).
                     for arg in &dep.args {
                         for pref in param_refs(arg) {
                             if !own_params.contains(&pref.as_str()) {
                                 errors.push(ValidateError::DependencyUnknownParam {
                                     source: source.clone(),
                                     line,
-                                    recipe: from.clone(),
+                                    task: from.clone(),
                                     dep: dep_name.clone(),
                                     param: pref,
                                 });
@@ -198,19 +198,19 @@ pub fn validate(vafile: &Vafile) -> Result<(), Vec<ValidateError>> {
                         }
                     }
                 }
-                None if vafile.is_namespace(&dep.path) => {
+                None if viafile.is_namespace(&dep.path) => {
                     errors.push(ValidateError::DependencyIsNamespace {
                         source: source.clone(),
                         line,
-                        recipe: from.clone(),
+                        task: from.clone(),
                         dep: dep_name,
-                        available: vafile.children(&dep.path),
+                        available: viafile.children(&dep.path),
                     });
                 }
                 None => errors.push(ValidateError::UnknownDependency {
                     source: source.clone(),
                     line,
-                    recipe: from.clone(),
+                    task: from.clone(),
                     dep: dep_name,
                 }),
             }
@@ -223,9 +223,9 @@ pub fn validate(vafile: &Vafile) -> Result<(), Vec<ValidateError>> {
     }
 
     // Phase B: cycle detection over the now fully-resolved graph.
-    if let Some(path) = find_cycle(vafile) {
-        // Point at the header of the first goal in the loop.
-        let first = vafile.recipes.get(&path[0]);
+    if let Some(path) = find_cycle(viafile) {
+        // Point at the header of the first task in the loop.
+        let first = viafile.tasks.get(&path[0]);
         let line = first.map(|r| r.line).unwrap_or(0);
         let source = first.map(|r| r.source.clone()).unwrap_or_default();
         return Err(vec![ValidateError::Cycle { source, line, path }]);
@@ -235,13 +235,13 @@ pub fn validate(vafile: &Vafile) -> Result<(), Vec<ValidateError>> {
 }
 
 /// Three-color DFS. Returns the cycle path (closed, e.g. build -> a -> build).
-fn find_cycle(vafile: &Vafile) -> Option<Vec<String>> {
+fn find_cycle(viafile: &Viafile) -> Option<Vec<String>> {
     // 0 = white (unseen), 1 = gray (on stack), 2 = black (done).
     let mut color: std::collections::HashMap<String, u8> = std::collections::HashMap::new();
     let mut stack: Vec<String> = Vec::new();
-    for key in vafile.recipes.keys() {
+    for key in viafile.tasks.keys() {
         if color.get(key).copied().unwrap_or(0) == 0 {
-            if let Some(cycle) = dfs_cycle(vafile, key, &mut color, &mut stack) {
+            if let Some(cycle) = dfs_cycle(viafile, key, &mut color, &mut stack) {
                 return Some(cycle);
             }
         }
@@ -250,7 +250,7 @@ fn find_cycle(vafile: &Vafile) -> Option<Vec<String>> {
 }
 
 fn dfs_cycle(
-    vafile: &Vafile,
+    viafile: &Viafile,
     key: &str,
     color: &mut std::collections::HashMap<String, u8>,
     stack: &mut Vec<String>,
@@ -258,8 +258,8 @@ fn dfs_cycle(
     color.insert(key.to_string(), 1);
     stack.push(key.to_string());
     // Every dep is known to resolve (Phase A passed), so this lookup is safe.
-    let recipe = vafile.recipes.get(key).expect("recipe exists");
-    for dep in &recipe.deps {
+    let task = viafile.tasks.get(key).expect("task exists");
+    for dep in &task.deps {
         let dep_key = dep.path.join("::");
         match color.get(&dep_key).copied().unwrap_or(0) {
             1 => {
@@ -270,7 +270,7 @@ fn dfs_cycle(
                 return Some(cycle);
             }
             0 => {
-                if let Some(cycle) = dfs_cycle(vafile, &dep_key, color, stack) {
+                if let Some(cycle) = dfs_cycle(viafile, &dep_key, color, stack) {
                     return Some(cycle);
                 }
             }
@@ -282,7 +282,7 @@ fn dfs_cycle(
     None
 }
 
-/// One scheduled step: a goal to run and the arguments bound to its parameters.
+/// One scheduled step: a task to run and the arguments bound to its parameters.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PlanNode {
     pub path: Vec<String>,
@@ -291,36 +291,36 @@ pub struct PlanNode {
 
 /// Build the run order from `root` (invoked with `root_args`): deduped,
 /// dependencies first, root last. A dependency's `{{param}}` arguments are
-/// resolved against the declaring recipe's bound args as we descend, so the same
-/// goal reached with *different* args runs once per distinct argument set.
+/// resolved against the declaring task's bound args as we descend, so the same
+/// task reached with *different* args runs once per distinct argument set.
 /// Assumes a validated (acyclic, fully-resolved, arg-checked) graph.
-pub fn plan(vafile: &Vafile, root: &[String], root_args: &[(String, String)]) -> Vec<PlanNode> {
+pub fn plan(viafile: &Viafile, root: &[String], root_args: &[(String, String)]) -> Vec<PlanNode> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut order: Vec<PlanNode> = Vec::new();
-    plan_visit(vafile, root, root_args.to_vec(), &mut visited, &mut order);
+    plan_visit(viafile, root, root_args.to_vec(), &mut visited, &mut order);
     order
 }
 
 fn plan_visit(
-    vafile: &Vafile,
+    viafile: &Viafile,
     path: &[String],
     args: Vec<(String, String)>,
     visited: &mut HashSet<String>,
     order: &mut Vec<PlanNode>,
 ) {
     if !visited.insert(plan_key(path, &args)) {
-        return; // this goal+args pairing is already scheduled
+        return; // this task+args pairing is already scheduled
     }
-    if let Some(recipe) = vafile.get(path) {
-        for dep in &recipe.deps {
-            // Fill this dep's `{{param}}` args from the current recipe's args,
+    if let Some(task) = viafile.get(path) {
+        for dep in &task.deps {
+            // Fill this dep's `{{param}}` args from the current task's args,
             // then bind the resulting values to the dep target's parameters.
             let values: Vec<String> = dep.args.iter().map(|a| substitute(a, &args)).collect();
-            let bound = match vafile.get(&dep.path) {
+            let bound = match viafile.get(&dep.path) {
                 Some(target) => bind_positional(&target.params, &values),
                 None => Vec::new(), // unreachable on a validated graph
             };
-            plan_visit(vafile, &dep.path, bound, visited, order);
+            plan_visit(viafile, &dep.path, bound, visited, order);
         }
         order.push(PlanNode {
             path: path.to_vec(),
@@ -329,7 +329,7 @@ fn plan_visit(
     }
 }
 
-/// Dedup key that distinguishes the same goal invoked with different arguments.
+/// Dedup key that distinguishes the same task invoked with different arguments.
 fn plan_key(path: &[String], args: &[(String, String)]) -> String {
     let mut key = path.join("::");
     for (_, value) in args {

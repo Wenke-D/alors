@@ -20,10 +20,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl   # static: runs on any distro
-            asset: va-linux-x86_64
+            asset: via-linux-x86_64
           - os: macos-14                        # Apple Silicon runner
             target: aarch64-apple-darwin
-            asset: va-macos-arm64
+            asset: via-macos-arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +39,7 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Stage binary
-        run: cp target/${{ matrix.target }}/release/va ${{ matrix.asset }}
+        run: cp target/${{ matrix.target }}/release/via ${{ matrix.asset }}
 
       - name: Attach to release
         uses: softprops/action-gh-release@v2

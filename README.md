@@ -1,15 +1,15 @@
-# va — a CLI for your project
+# via — a CLI for your project
 
 Every project accumulates commands: configure, compile, test, package, clean.
-`va` gathers them into a single command-line tool for your project. You write
-the commands once as named **goals** in a `vafile`, and run them with
-`va <goal>`.
+`via` gathers them into a single command-line tool for your project. You write
+the commands once as named **tasks** in a `viafile`, and run them with
+`via <task>`.
 
 It follows in the footsteps of [`make`](https://www.gnu.org/software/make/)
 (originally written by Stuart Feldman at Bell Labs; GNU Make today) and
 [`just`](https://github.com/casey/just) (by Casey Rodarmor) — the same idea of a
-project-local file full of named recipes — and owes both a great deal. `va`
-keeps that core idea and makes a few different choices around how goals are named
+project-local file full of named tasks — and owes both a great deal. `via`
+keeps that core idea and makes a few different choices around how tasks are named
 and invoked (see [Subcommands](#subcommands)).
 
 ## Install
@@ -20,40 +20,40 @@ executable, and drop it on your `PATH`:
 **Linux (x86_64)**
 
 ```
-curl -L -o va https://github.com/Wenke-D/va/releases/latest/download/va-linux-x86_64
-chmod +x va && sudo mv va /usr/local/bin/
+curl -L -o via https://github.com/Wenke-D/via/releases/latest/download/via-linux-x86_64
+chmod +x via && sudo mv via /usr/local/bin/
 ```
 
 **macOS (Apple Silicon)**
 
 ```
-curl -L -o va https://github.com/Wenke-D/va/releases/latest/download/va-macos-arm64
-chmod +x va && sudo mv va /usr/local/bin/
+curl -L -o via https://github.com/Wenke-D/via/releases/latest/download/via-macos-arm64
+chmod +x via && sudo mv via /usr/local/bin/
 ```
 
 The Linux binary is statically linked (musl), so it runs on any distribution
 with nothing else to install. On macOS, Gatekeeper blocks unsigned downloads —
-clear the quarantine flag with `xattr -d com.apple.quarantine va` (or right-click
+clear the quarantine flag with `xattr -d com.apple.quarantine via` (or right-click
 → Open the first time).
 
-Prefer to build it yourself? `cargo build --release` (or `va install`, which
+Prefer to build it yourself? `cargo build --release` (or `via install`, which
 builds and installs to `/usr/local/bin`).
 
 ## Features
 
-- **Goals in a `vafile`.** Define a command once; run it as `va <goal>`.
-- **Parameters.** A goal can take positional arguments: `va test MySuite`.
-- **Sequencing.** A goal can depend on other goals, which run first, in order.
-- **Subcommands.** Goals can be grouped into namespaces: `va docker build`.
+- **Tasks in a `viafile`.** Define a command once; run it as `via <task>`.
+- **Parameters.** A task can take positional arguments: `via test MySuite`.
+- **Sequencing.** A task can depend on other tasks, which run first, in order.
+- **Subcommands.** Tasks can be grouped into namespaces: `via docker build`.
 - **Validated up front.** The whole file is checked before anything runs —
   unknown dependencies and dependency cycles are reported, not discovered
   mid-run.
-- **One file, current directory.** `va` reads the `vafile` in the directory you
+- **One file, current directory.** `via` reads the `viafile` in the directory you
   run it from. No searching up the tree.
 
-## Defining a vafile
+## Defining a viafile
 
-A `vafile` is a list of goals. Each goal is a name ending in `:`, followed by an
+A `viafile` is a list of tasks. Each task is a name ending in `:`, followed by an
 indented body — the shell commands to run.
 
 ```
@@ -70,15 +70,15 @@ clean:
     rm -rf build
 ```
 
-Run a goal by name:
+Run a task by name:
 
 ```
-va configure        # runs: cmake -S . -B build
-va clean            # runs: rm -rf build
-va                  # with no goal, lists everything available
+via configure        # runs: cmake -S . -B build
+via clean            # runs: rm -rf build
+via                  # with no task, lists everything available
 ```
 
-A goal can take a parameter, used in the body as `{{name}}` (or `$name`):
+A task can take a parameter, used in the body as `{{name}}` (or `$name`):
 
 ```
 test name:
@@ -86,12 +86,12 @@ test name:
 ```
 
 ```
-va test MySuite     # runs: ctest --test-dir build -R MySuite
+via test MySuite     # runs: ctest --test-dir build -R MySuite
 ```
 
 ### How a body runs
 
-A goal's body runs as a **single shell** (`sh`), so `cd` and variables persist
+A task's body runs as a **single shell** (`sh`), so `cd` and variables persist
 from one line to the next:
 
 ```
@@ -101,21 +101,21 @@ build:
 ```
 
 The body is also **fail-fast**: it runs under `set -e`, so the first command
-that fails stops the goal — the same "stop on first failure" rule that applies
+that fails stops the task — the same "stop on first failure" rule that applies
 to dependencies. To let a body keep going after a failure, start it with
 `set +e`, or ignore a single command with `cmd || true`:
 
 ```
 check:
-    set +e              # this goal tolerates failures
+    set +e              # this task tolerates failures
     diff a b
     echo "compared"
 ```
 
-## Sequencing goals
+## Sequencing tasks
 
-A goal can list other goals to run first, **comma-separated**, after its `:` —
-so you can compose small goals into a larger one:
+A task can list other tasks to run first, **comma-separated**, after its `:` —
+so you can compose small tasks into a larger one:
 
 ```
 configure:
@@ -129,47 +129,47 @@ build: configure, compile
 ```
 
 ```
-va build            # runs configure, then compile
+via build            # runs configure, then compile
 ```
 
-### Passing arguments to a sequenced goal
+### Passing arguments to a sequenced task
 
 Because dependencies are comma-separated, one can carry its own positional
-arguments — written as whitespace after the goal name. So a sequence can invoke
-a parameterized goal with a value fixed right in the file:
+arguments — written as whitespace after the task name. So a sequence can invoke
+a parameterized task with a value fixed right in the file:
 
 ```
 test name:
     ctest --test-dir build -R {{name}}
 
-# `va ci` runs `test smoke`, then `lint`
+# `via ci` runs `test smoke`, then `lint`
 ci: test smoke, lint
 ```
 
-An argument may also be a `{{param}}` of the **declaring** goal, forwarding its
+An argument may also be a `{{param}}` of the **declaring** task, forwarding its
 own value down the chain (use `"quotes"` for a value with spaces):
 
 ```
-# `va check integration` runs `test integration`, then echoes
+# `via check integration` runs `test integration`, then echoes
 check suite: test {{suite}}
     echo "checked {{suite}}"
 ```
 
-Dependencies run **deps-first**, and the goal's own body runs last. The same goal
-with the **same** arguments runs **at most once** per invocation; the same goal
+Dependencies run **deps-first**, and the task's own body runs last. The same task
+with the **same** arguments runs **at most once** per invocation; the same task
 with **different** arguments runs once for each — so `all: build x86, build arm`
 builds both. The first failure stops the sequence. Everything is checked before
 anything runs, so a wrong argument count or a cycle is a clear up-front error, not
 a mid-run surprise:
 
 ```
-va: dependency cycle: build -> compile -> build
+via: dependency cycle: build -> compile -> build
 ```
 
 ## Subcommands
 
-Goals can be grouped into namespaces with `::`. A goal named `docker::build`
-becomes the subcommand `va docker build`:
+Tasks can be grouped into namespaces with `::`. A task named `docker::build`
+becomes the subcommand `via docker build`:
 
 ```
 docker::build:
@@ -180,22 +180,22 @@ docker::push:
 ```
 
 ```
-va docker build     # runs docker::build
-va docker push      # runs docker::push
-va docker           # lists the docker subcommands
+via docker build     # runs docker::build
+via docker push      # runs docker::push
+via docker           # lists the docker subcommands
 ```
 
-A namespace can also have a **default** goal — the plain goal with the same name.
-Given both `build:` and `build::release:`, `va build` runs the default and
-`va build release` runs the sub-goal.
+A namespace can also have a **default** task — the plain task with the same name.
+Given both `build:` and `build::release:`, `via build` runs the default and
+`via build release` runs the sub-task.
 
-### One goal per invocation
+### One task per invocation
 
-This is the main place `va` differs from `just`. In `just` you can run several
-recipes at once — `just configure compile test`. In `va` an invocation always
-selects **exactly one** goal; the tokens after it are arguments or a subcommand
-path, never additional goals. Running things in sequence is expressed *in the
-vafile* as dependencies (`build: configure, compile`), not assembled on the
+This is the main place `via` differs from `just`. In `just` you can run several
+tasks at once — `just configure compile test`. In `via` an invocation always
+selects **exactly one** task; the tokens after it are arguments or a subcommand
+path, never additional tasks. Running things in sequence is expressed *in the
+viafile* as dependencies (`build: configure, compile`), not assembled on the
 command line.
 
 A consequence: a token that matches a subcommand is always treated as part of
@@ -203,13 +203,13 @@ the path, so it can never be mistaken for an argument.
 
 ## Imports
 
-A vafile can pull goals in from other files with `import`, so shared recipes
+A viafile can pull tasks in from other files with `import`, so shared tasks
 live in one place and projects compose them. The path is **quoted** and resolved
 **relative to the importing file's directory**:
 
 ```
-import "ci/common.vafile"
-import "docker.vafile" as docker
+import "ci/common.viafile"
+import "docker.viafile" as docker
 
 build: lint, docker::build
     echo "everything built"
@@ -217,31 +217,31 @@ build: lint, docker::build
 
 There are two shapes:
 
-- **Flat** — `import "ci/common.vafile"` merges the imported goals under their
-  own names. A `lint:` over there becomes `va lint` here.
-- **Namespaced** — `import "docker.vafile" as docker` nests the *whole* file
-  under a namespace. Its `build:` becomes `va docker build` (and `docker::build`
+- **Flat** — `import "ci/common.viafile"` merges the imported tasks under their
+  own names. A `lint:` over there becomes `via lint` here.
+- **Namespaced** — `import "docker.viafile" as docker` nests the *whole* file
+  under a namespace. Its `build:` becomes `via docker build` (and `docker::build`
   when referenced as a dependency). The imported file's own internal
   dependencies are rewritten to match, so it doesn't need to know it was
   namespaced — the importer decides the layout.
 
-Once merged, imported goals are ordinary goals: you can depend on them
+Once merged, imported tasks are ordinary tasks: you can depend on them
 (`build: lint, docker::build`) and invoke them just like local ones.
 
-An `as` namespace can also be given an **action** — a default goal — by defining
-the bare name in the importing file. It runs on `va docker`, while the
+An `as` namespace can also be given an **action** — a default task — by defining
+the bare name in the importing file. It runs on `via docker`, while the
 subcommands still work:
 
 ```
-import "docker.vafile" as docker
+import "docker.viafile" as docker
 
-# `va docker` builds then pushes; `va docker build` / `va docker push` still work
+# `via docker` builds then pushes; `via docker build` / `via docker push` still work
 docker: docker::build, docker::push
 ```
 
-A few rules, in keeping with va's "checked up front" stance:
+A few rules, in keeping with via's "checked up front" stance:
 
-- **Every name is unique.** If two files define the same final goal name it's a
+- **Every name is unique.** If two files define the same final task name it's a
   hard error, reported before anything runs. Namespacing with `as` is how you
   disambiguate.
 - **Imports are transitive.** An imported file may import in turn; an import
@@ -249,12 +249,12 @@ A few rules, in keeping with va's "checked up front" stance:
 - **The local file doesn't win.** There's no override — a clash is always an
   error, whether between the root and an import or between two imports.
 - **An `as` namespace is sealed.** Exactly one import fills it. The importing
-  file may give it a default goal (the bare `docker:` above) but may not add new
-  sub-goals to it or override its members, and two imports can't share one
+  file may give it a default task (the bare `docker:` above) but may not add new
+  sub-tasks to it or override its members, and two imports can't share one
   namespace. The contents of a namespace come from one place.
 
 > A line is read as an import only when it's the word `import` followed by a
-> quoted path (`import "x"`). That keeps a goal you legitimately *named* `import`
+> quoted path (`import "x"`). That keeps a task you legitimately *named* `import`
 > (written `import:`) from being mistaken for a directive.
 
 ## Releasing
@@ -280,20 +280,21 @@ _Status: v0 prototype._
 
 ## The name
 
-`va` is short — most of the good short command names are already taken, and a
-project runner is something you type all day. It's also French: the imperative
-of *aller* ("to go"), so `va` means **"go"**. Each invocation then reads like a
-little instruction — `va build` is "go build", `va test` is "go test".
+`via` is short — a project's CLI is something you type all day, so the name
+should stay out of the way. It's also a real word: Latin for "way" or "road",
+and in English "by way of". Each invocation then reads like routing a command
+through your project — you get there *via* the project's own tasks, so
+`via build` is "build, by way of this project" and `via test` its tests.
 
 ## Motivation
 
 I reach for a `justfile` in most of my projects, but I kept wanting real
-**subcommands** — grouping related recipes under a namespace like
-`va docker build` instead of flat names. That itch is what `va` scratches.
+**subcommands** — grouping related tasks under a namespace like
+`via docker build` instead of flat names. That itch is what `via` scratches.
 
 I mostly write Python and C++, but a small, fast, single-binary CLI is a better
 fit for **Rust** — no runtime to ship and nothing to install alongside it. I
 don't know Rust's exact syntax, though, so I built this by vibe-coding with
 [Claude](https://www.anthropic.com/claude): I described the behavior and the
 design choices I wanted, and Claude wrote and explained the Rust. Credit where
-it's due — `va` was written with Claude.
+it's due — `via` was written with Claude.

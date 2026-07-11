@@ -1,10 +1,10 @@
-//! Parser for the `vafile` format.
+//! Parser for the `viafile` format.
 //!
 //! Grammar (v0, minimal subset):
-//!   - A recipe header is a line of the form:  NAME [params...] : [deps...]
+//!   - A task header is a line of the form:  NAME [params...] : [deps...]
 //!       NAME may contain `::` namespace separators, e.g. `docker::build`
 //!       params are space-separated bare identifiers, optionally `name?` (optional)
-//!       deps (after the `:`) are goal references run before the body, e.g.
+//!       deps (after the `:`) are task references run before the body, e.g.
 //!       `build: configure compile`. Deps take no arguments.
 //!   - The body is the set of following lines indented more than the header.
 //!   - Blank lines and lines starting with `#` (at column 0) are ignored.
@@ -15,15 +15,15 @@
 
 use std::collections::BTreeMap;
 
-/// A single positional parameter of a recipe.
+/// A single positional parameter of a task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Param {
     pub name: String,
     pub optional: bool,
 }
 
-/// A dependency edge: a goal to run first, with the positional arguments to pass
-/// it. `args` may contain `{{param}}` references to the *declaring* recipe's
+/// A dependency edge: a task to run first, with the positional arguments to pass
+/// it. `args` may contain `{{param}}` references to the *declaring* task's
 /// params (resolved when the plan is built); anything else is a literal value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dep {
@@ -31,24 +31,24 @@ pub struct Dep {
     pub args: Vec<String>,
 }
 
-/// A parsed recipe (a "goal").
+/// A parsed task (a "task").
 #[derive(Debug, Clone)]
-pub struct Recipe {
+pub struct Task {
     /// Full dotted path, e.g. ["docker", "build"] for `docker::build`.
     pub path: Vec<String>,
     pub params: Vec<Param>,
     /// Dependencies, in declaration order — comma-separated after the `:`, each
-    /// a goal reference plus optional args, e.g. `ci: test integration, lint` ->
+    /// a task reference plus optional args, e.g. `ci: test integration, lint` ->
     /// [Dep{test, [integration]}, Dep{lint, []}]. Run (deduped, deps-first)
-    /// before this recipe's body.
+    /// before this task's body.
     pub deps: Vec<Dep>,
     /// Raw body lines (already de-indented), executed as a shell script.
     pub body: Vec<String>,
     /// Source line number of the header (1-based), for error messages.
     pub line: usize,
-    /// Label of the file this recipe was parsed from (for error messages).
+    /// Label of the file this task was parsed from (for error messages).
     /// The pure parser doesn't know filenames; the loader stamps the real path
-    /// when merging imports. Defaults to "vafile" for a standalone parse.
+    /// when merging imports. Defaults to "viafile" for a standalone parse.
     pub source: String,
 }
 
@@ -64,7 +64,7 @@ pub struct Import {
     pub line: usize,
 }
 
-impl Recipe {
+impl Task {
     /// The display name as written in the file, e.g. "docker::build".
     pub fn display_name(&self) -> String {
         self.path.join("::")
@@ -79,36 +79,36 @@ pub struct ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "vafile:{}: {}", self.line, self.message)
+        write!(f, "viafile:{}: {}", self.line, self.message)
     }
 }
 
-/// The parsed model: an ordered collection of recipes keyed by their path,
+/// The parsed model: an ordered collection of tasks keyed by their path,
 /// plus any `import` directives the loader still needs to resolve.
 #[derive(Debug, Default)]
-pub struct Vafile {
-    /// path (joined by "::") -> Recipe
-    pub recipes: BTreeMap<String, Recipe>,
-    /// `import` directives in declaration order. Empty in a fully-merged Vafile.
+pub struct Viafile {
+    /// path (joined by "::") -> Task
+    pub tasks: BTreeMap<String, Task>,
+    /// `import` directives in declaration order. Empty in a fully-merged Viafile.
     pub imports: Vec<Import>,
 }
 
-impl Vafile {
-    pub fn get(&self, path: &[String]) -> Option<&Recipe> {
-        self.recipes.get(&path.join("::"))
+impl Viafile {
+    pub fn get(&self, path: &[String]) -> Option<&Task> {
+        self.tasks.get(&path.join("::"))
     }
 
-    /// True if `path` is a namespace: some recipe exists strictly below it.
+    /// True if `path` is a namespace: some task exists strictly below it.
     pub fn is_namespace(&self, path: &[String]) -> bool {
         let prefix = if path.is_empty() {
             String::new()
         } else {
             format!("{}::", path.join("::"))
         };
-        self.recipes.keys().any(|k| k.starts_with(&prefix) && k.as_str() != path.join("::"))
+        self.tasks.keys().any(|k| k.starts_with(&prefix) && k.as_str() != path.join("::"))
     }
 
-    /// Direct children goal/namespace segment names under `path`.
+    /// Direct children task/namespace segment names under `path`.
     pub fn children(&self, path: &[String]) -> Vec<String> {
         let depth = path.len();
         let prefix = if path.is_empty() {
@@ -117,7 +117,7 @@ impl Vafile {
             format!("{}::", path.join("::"))
         };
         let mut out = Vec::new();
-        for key in self.recipes.keys() {
+        for key in self.tasks.keys() {
             if !path.is_empty() && !key.starts_with(&prefix) {
                 continue;
             }
@@ -139,7 +139,7 @@ fn leading_spaces(s: &str) -> usize {
 
 /// Split a dependency segment into tokens on whitespace, honoring double quotes
 /// so an argument can contain spaces (`say "hello world"` -> ["say", "hello world"]).
-/// Quote characters are stripped; the first token is the goal, the rest are args.
+/// Quote characters are stripped; the first token is the task, the rest are args.
 fn tokenize(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -191,10 +191,10 @@ fn parse_name_path(name: &str, lineno: usize) -> Result<Vec<String>, ParseError>
     Ok(path)
 }
 
-/// True if a column-0 line is an `import` directive rather than a recipe header.
+/// True if a column-0 line is an `import` directive rather than a task header.
 ///
 /// The test is deliberately narrow: the line must be the bare word `import`
-/// followed by whitespace and then a quote. This keeps a recipe legitimately
+/// followed by whitespace and then a quote. This keeps a task legitimately
 /// *named* `import` (written `import:`) from being misread as a directive.
 fn looks_like_import(line: &str) -> bool {
     match line.trim().strip_prefix("import") {
@@ -258,7 +258,7 @@ fn parse_import(line: &str, lineno: usize) -> Result<Import, ParseError> {
     })
 }
 
-/// Parse a recipe header `NAME params... : deps...` into (path, params, deps).
+/// Parse a task header `NAME params... : deps...` into (path, params, deps).
 ///
 /// The separator is the first "lone" `:` — one not adjacent to another colon,
 /// so it is never confused with a `::` inside a name. Everything left of it is
@@ -287,7 +287,7 @@ fn parse_header(
         None => {
             return Err(ParseError {
                 line: lineno,
-                message: format!("recipe header must contain ':' -> `{}`", trimmed),
+                message: format!("task header must contain ':' -> `{}`", trimmed),
             })
         }
     };
@@ -301,7 +301,7 @@ fn parse_header(
         None => {
             return Err(ParseError {
                 line: lineno,
-                message: "recipe header is missing a name".to_string(),
+                message: "task header is missing a name".to_string(),
             })
         }
     };
@@ -340,7 +340,7 @@ fn parse_header(
     }
 
     // Deps (right of `:`) are comma-separated. Within one dep, whitespace splits
-    // the goal from its positional args, e.g. `test integration, lint`.
+    // the task from its positional args, e.g. `test integration, lint`.
     let mut deps = Vec::new();
     if !right.is_empty() {
         for segment in right.split(',') {
@@ -352,8 +352,8 @@ fn parse_header(
                 });
             }
             let mut tokens = tokenize(seg).into_iter();
-            // seg is non-empty, so there is at least the goal token.
-            let name = tokens.next().expect("non-empty dependency has a goal");
+            // seg is non-empty, so there is at least the task token.
+            let name = tokens.next().expect("non-empty dependency has a task");
             let path = parse_name_path(&name, lineno)?;
             let args: Vec<String> = tokens.collect();
             deps.push(Dep { path, args });
@@ -363,8 +363,8 @@ fn parse_header(
     Ok((path, params, deps))
 }
 
-pub fn parse(src: &str) -> Result<Vafile, ParseError> {
-    let mut vafile = Vafile::default();
+pub fn parse(src: &str) -> Result<Viafile, ParseError> {
+    let mut viafile = Viafile::default();
     let lines: Vec<&str> = src.lines().collect();
     let mut i = 0;
 
@@ -382,13 +382,13 @@ pub fn parse(src: &str) -> Result<Vafile, ParseError> {
         if leading_spaces(raw) != 0 {
             return Err(ParseError {
                 line: lineno,
-                message: "unexpected indented line outside a recipe body".to_string(),
+                message: "unexpected indented line outside a task body".to_string(),
             });
         }
 
         // An `import "path" [as ns]` directive (a top-level line, no body).
         if looks_like_import(raw) {
-            vafile.imports.push(parse_import(raw, lineno)?);
+            viafile.imports.push(parse_import(raw, lineno)?);
             i += 1;
             continue;
         }
@@ -437,27 +437,27 @@ pub fn parse(src: &str) -> Result<Vafile, ParseError> {
             .collect();
 
         let key = path.join("::");
-        if vafile.recipes.contains_key(&key) {
+        if viafile.tasks.contains_key(&key) {
             return Err(ParseError {
                 line: lineno,
-                message: format!("duplicate recipe `{}`", key),
+                message: format!("duplicate task `{}`", key),
             });
         }
 
-        vafile.recipes.insert(
+        viafile.tasks.insert(
             key,
-            Recipe {
+            Task {
                 path,
                 params,
                 deps,
                 body,
                 line: lineno,
-                source: "vafile".to_string(),
+                source: "viafile".to_string(),
             },
         );
 
         i = j;
     }
 
-    Ok(vafile)
+    Ok(viafile)
 }

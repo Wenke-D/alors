@@ -1,0 +1,73 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "viafile",
+  "scopeName": "source.viafile",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#import-directive" },
+    { "include": "#task-header" },
+    { "include": "#interpolation" },
+    { "include": "#variable" }
+  ],
+  "repository": {
+    "comment": {
+      "comment": "A full-line comment (only at column 0, per the viafile grammar).",
+      "match": "^#.*$",
+      "name": "comment.line.number-sign.viafile"
+    },
+    "import-directive": {
+      "comment": "import \"path\" [as namespace]  at column 0.",
+      "match": "^(import)[ \\t]+(\"[^\"]*\")(?:[ \\t]+(as)[ \\t]+([A-Za-z0-9_-]+(?:::[A-Za-z0-9_-]+)*))?[ \\t]*$",
+      "captures": {
+        "1": { "name": "keyword.control.import.viafile" },
+        "2": { "name": "string.quoted.double.viafile" },
+        "3": { "name": "keyword.control.import.viafile" },
+        "4": {
+          "name": "entity.name.namespace.viafile",
+          "patterns": [
+            { "match": "::", "name": "punctuation.separator.namespace.viafile" }
+          ]
+        }
+      }
+    },
+    "task-header": {
+      "comment": "NAME [params...] : [deps...]  at column 0.",
+      "match": "^([A-Za-z0-9_-]+(?:::[A-Za-z0-9_-]+)*)((?:[ \\t]+[A-Za-z0-9_]+\\??)*)[ \\t]*(:)(.*)$",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.task.viafile",
+          "patterns": [
+            { "match": "::", "name": "punctuation.separator.namespace.viafile" }
+          ]
+        },
+        "2": {
+          "patterns": [
+            { "match": "\\?", "name": "keyword.operator.optional.viafile" },
+            { "match": "[A-Za-z0-9_]+", "name": "variable.parameter.viafile" }
+          ]
+        },
+        "3": { "name": "punctuation.separator.task.viafile" },
+        "4": {
+          "patterns": [
+            { "match": "::", "name": "punctuation.separator.namespace.viafile" },
+            { "match": "[A-Za-z0-9_-]+", "name": "entity.name.function.dependency.viafile" }
+          ]
+        }
+      }
+    },
+    "interpolation": {
+      "comment": "{{ name }} parameter substitution in a task body.",
+      "match": "(\\{\\{)[ \\t]*([A-Za-z0-9_]+)[ \\t]*(\\}\\})",
+      "captures": {
+        "1": { "name": "punctuation.section.interpolation.begin.viafile" },
+        "2": { "name": "variable.other.interpolation.viafile" },
+        "3": { "name": "punctuation.section.interpolation.end.viafile" }
+      }
+    },
+    "variable": {
+      "comment": "Shell-style $name / ${name} references in a task body.",
+      "match": "(\\$)(\\{)?([A-Za-z_][A-Za-z0-9_]*)(\\})?",
+      "name": "variable.other.viafile"
+    }
+  }
+}

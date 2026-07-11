@@ -5,7 +5,7 @@ mod resolver;
 
 use resolver::ResolveError;
 
-fn vf(src: &str) -> parser::Vafile { parser::parse(src).expect("parse ok") }
+fn vf(src: &str) -> parser::Viafile { parser::parse(src).expect("parse ok") }
 fn toks(s: &[&str]) -> Vec<String> { s.iter().map(|x| x.to_string()).collect() }
 
 const SAMPLE: &str = r#"
@@ -26,28 +26,28 @@ greet name:
 "#;
 
 #[test]
-fn default_goal_runs() {
+fn default_task_runs() {
     let v = vf(SAMPLE);
     let r = resolver::resolve(&v, &toks(&["build"])).unwrap();
-    assert_eq!(r.recipe.display_name(), "build");
+    assert_eq!(r.task.display_name(), "build");
 }
 
 #[test]
-fn subgoal_path_wins_and_shadows() {
+fn subtask_path_wins_and_shadows() {
     let v = vf(SAMPLE);
     let r = resolver::resolve(&v, &toks(&["build", "release"])).unwrap();
-    assert_eq!(r.recipe.display_name(), "build::release");
+    assert_eq!(r.task.display_name(), "build::release");
     assert!(r.args.is_empty());
 }
 
 #[test]
-fn unknown_token_after_no_param_goal_errors() {
+fn unknown_token_after_no_param_task_errors() {
     let v = vf(SAMPLE);
     let err = resolver::resolve(&v, &toks(&["build", "xxx"])).unwrap_err();
     match err {
-        ResolveError::NotSubcommandNorParam { token, goal, takes_args } => {
+        ResolveError::NotSubcommandNorParam { token, task, takes_args } => {
             assert_eq!(token, "xxx");
-            assert_eq!(goal, "build");
+            assert_eq!(task, "build");
             assert!(!takes_args);
         }
         other => panic!("wrong error: {:?}", other),
@@ -58,7 +58,7 @@ fn unknown_token_after_no_param_goal_errors() {
 fn namespace_descend() {
     let v = vf(SAMPLE);
     let r = resolver::resolve(&v, &toks(&["docker", "build"])).unwrap();
-    assert_eq!(r.recipe.display_name(), "docker::build");
+    assert_eq!(r.task.display_name(), "docker::build");
 }
 
 #[test]

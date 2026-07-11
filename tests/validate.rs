@@ -5,7 +5,7 @@ mod validate;
 
 use validate::{plan, validate as run_validate, ValidateError};
 
-fn vf(src: &str) -> parser::Vafile {
+fn vf(src: &str) -> parser::Viafile {
     parser::parse(src).expect("parse ok")
 }
 
