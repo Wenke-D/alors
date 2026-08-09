@@ -6,6 +6,11 @@
 //!       params are space-separated bare identifiers, optionally `name?` (optional)
 //!       deps (after the `:`) are task references run before the body, e.g.
 //!       `build: configure compile`. Deps take no arguments.
+//!   - A constant is a top-level line `name := value` — a literal, immutable
+//!     string shared by the tasks of *this file* (file-local; imports neither
+//!     see nor leak constants). It is substituted for `{{name}}` in bodies and
+//!     dependency arguments right here at parse time, except where a task's own
+//!     param has the same name — arguments take precedence over constants.
 //!   - The body is the set of following lines indented more than the header.
 //!   - Blank lines and lines starting with `#` (at column 0) are ignored.
 //!   - Body lines have their common leading indentation stripped.
@@ -91,6 +96,10 @@ pub struct Viafile {
     pub tasks: BTreeMap<String, Task>,
     /// `import` directives in declaration order. Empty in a fully-merged Viafile.
     pub imports: Vec<Import>,
+    /// name -> value of this file's `name := value` constants. Already applied
+    /// to this file's tasks by `parse`; kept for introspection. The loader does
+    /// not merge these — constants are file-local.
+    pub constants: BTreeMap<String, String>,
 }
 
 impl Viafile {
@@ -258,6 +267,35 @@ fn parse_import(line: &str, lineno: usize) -> Result<Import, ParseError> {
     })
 }
 
+/// If a column-0 line is a constant definition `name := value`, parse it.
+///
+/// The test is narrow: the text before the first `:=` must be a single bare
+/// identifier (same charset as a param name). Anything else returns `None` and
+/// falls through to task-header parsing, so a `:=` buried in a dependency list
+/// is never misread as a definition.
+fn parse_constant(line: &str, lineno: usize) -> Option<Result<(String, String), ParseError>> {
+    let trimmed = line.trim();
+    let idx = trimmed.find(":=")?;
+    let name = trimmed[..idx].trim();
+    if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    let err = |message: String| Some(Err(ParseError { line: lineno, message }));
+    let value = trimmed[idx + 2..].trim();
+    if value.is_empty() {
+        return err(format!("constant `{}` has no value", name));
+    }
+    // A constant is a literal — referencing params or other constants in its
+    // value would be logic, which belongs in task bodies.
+    if value.contains("{{") {
+        return err(format!(
+            "constant `{}` must be a literal value (no `{{{{...}}}}` references)",
+            name
+        ));
+    }
+    Some(Ok((name.to_string(), value.to_string())))
+}
+
 /// Parse a task header `NAME params... : deps...` into (path, params, deps).
 ///
 /// The separator is the first "lone" `:` — one not adjacent to another colon,
@@ -393,6 +431,20 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
             continue;
         }
 
+        // A `name := value` constant (a top-level line, no body).
+        if let Some(parsed) = parse_constant(raw, lineno) {
+            let (name, value) = parsed?;
+            if viafile.constants.contains_key(&name) {
+                return Err(ParseError {
+                    line: lineno,
+                    message: format!("constant `{}` is already defined", name),
+                });
+            }
+            viafile.constants.insert(name, value);
+            i += 1;
+            continue;
+        }
+
         let (path, params, deps) = parse_header(raw, lineno)?;
 
         // Collect the body: subsequent lines indented > 0, until a non-indented
@@ -459,5 +511,36 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
         i = j;
     }
 
+    substitute_constants(&mut viafile);
     Ok(viafile)
+}
+
+/// Replace `{{name}}` with each constant's value in task bodies and dependency
+/// arguments. Runs at parse time, on this file's own tasks only — which is what
+/// makes constants file-local: by the time the loader merges imports, they are
+/// already applied and inert. A name that is also one of the task's own params
+/// is skipped: arguments take precedence, and are bound later (dep args at plan
+/// time, the body at run time).
+fn substitute_constants(viafile: &mut Viafile) {
+    let Viafile { tasks, constants, .. } = viafile;
+    for task in tasks.values_mut() {
+        for (name, value) in constants.iter() {
+            if task.params.iter().any(|p| p.name == *name) {
+                continue;
+            }
+            let pattern = format!("{{{{{}}}}}", name);
+            for line in &mut task.body {
+                if line.contains(&pattern) {
+                    *line = line.replace(&pattern, value);
+                }
+            }
+            for dep in &mut task.deps {
+                for arg in &mut dep.args {
+                    if arg.contains(&pattern) {
+                        *arg = arg.replace(&pattern, value);
+                    }
+                }
+            }
+        }
+    }
 }

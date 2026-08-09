@@ -86,6 +86,10 @@ declare dependencies in the viafile instead.
 - `name:` then an indented body of shell commands defines a task.
 - `name param1 [param2]:` declares positional parameters; `[x]` is optional.
   Use them in the body as `{{{{param}}}}` or `$param`.
+- `name := value` (top level) defines a constant: an immutable literal usable
+  as `{{{{name}}}}` in bodies and dependency arguments. File-local (imports
+  neither see nor leak it); a task param with the same name takes precedence.
+  No logic in values — computation belongs in shell code inside task bodies.
 - `name: dep1, dep2 arg` — comma-separated dependencies run first, in order,
   deps-first; a dep may carry fixed positional args. Same dep + same args
   runs at most once per invocation.

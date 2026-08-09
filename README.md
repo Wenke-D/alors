@@ -43,6 +43,7 @@ builds and installs to `/usr/local/bin`).
 
 - **Tasks in a `viafile`.** Define a command once; run it as `via <task>`.
 - **Parameters.** A task can take positional arguments: `via test MySuite`.
+- **Constants.** `version := 1.4.2` shares a literal value across tasks.
 - **Sequencing.** A task can depend on other tasks, which run first, in order.
 - **Subcommands.** Tasks can be grouped into namespaces: `via docker build`.
 - **Validated up front.** The whole file is checked before anything runs —
@@ -116,6 +117,46 @@ check:
     set +e              # this task tolerates failures
     diff a b
     echo "compared"
+```
+
+## Constants
+
+A top-level `name := value` line defines a **constant** — a value shared by the
+tasks of that file, used as `{{name}}` just like a parameter:
+
+```
+version := 1.4.2
+image := registry.example.com/app
+
+build:
+    docker build -t {{image}}:{{version}} .
+
+push: build
+    docker push {{image}}:{{version}}
+```
+
+Constants are deliberately *not* variables:
+
+- **Immutable.** Defining the same name twice is an error. The value is a
+  literal — it may not reference params or other constants. Any logic belongs
+  in shell code inside a task body.
+- **Params win.** If a task declares a param with the same name, `{{name}}` in
+  that task means the param. So a constant can serve as a default that a task's
+  own arguments override.
+- **File-local.** A constant applies to the tasks written in the same file.
+  Imports neither see nor leak constants, so two files can each have their own
+  `version` without clashing.
+
+A constant also works as a **dependency argument**, which is where it shines —
+one line controls what every sequence passes along:
+
+```
+arch := arm64
+
+build target:
+    cmake --preset {{target}}
+
+release: build {{arch}}
 ```
 
 ## Sequencing tasks

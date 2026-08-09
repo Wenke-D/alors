@@ -217,3 +217,35 @@ fn imports_resolve_relative_to_the_importing_file() {
     let v = loader::load(&sb.path("viafile")).expect("relative resolution");
     assert!(v.get(&path(&["help"])).is_some());
 }
+
+#[test]
+fn constants_are_file_local_across_imports() {
+    let sb = Sandbox::new();
+    // Root and import each define their own `version`; each file's tasks see
+    // only their own value, and an unknown name is NOT filled by the other file.
+    sb.write(
+        "viafile",
+        "import \"lib.viafile\"\nversion := root-1\nshow:\n    echo {{version}} {{libonly}}\n",
+    );
+    sb.write(
+        "lib.viafile",
+        "version := lib-2\nlibonly := L\nlibshow:\n    echo {{version}}\n",
+    );
+
+    let v = loader::load(&sb.path("viafile")).expect("load ok");
+    let show = v.get(&path(&["show"])).expect("show exists");
+    assert_eq!(show.body, vec!["echo root-1 {{libonly}}".to_string()]);
+    let libshow = v.get(&path(&["libshow"])).expect("libshow exists");
+    assert_eq!(libshow.body, vec!["echo lib-2".to_string()]);
+}
+
+#[test]
+fn same_constant_in_two_files_is_not_a_clash() {
+    let sb = Sandbox::new();
+    sb.write("viafile", "import \"lib.viafile\"\nx := 1\na:\n    echo {{x}}\n");
+    sb.write("lib.viafile", "x := 2\nb:\n    echo {{x}}\n");
+
+    let v = loader::load(&sb.path("viafile")).expect("file-local constants never clash");
+    assert_eq!(v.get(&path(&["a"])).unwrap().body, vec!["echo 1".to_string()]);
+    assert_eq!(v.get(&path(&["b"])).unwrap().body, vec!["echo 2".to_string()]);
+}
