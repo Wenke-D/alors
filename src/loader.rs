@@ -1,14 +1,14 @@
-//! The import loader: turns a root `viafile` plus its `import` directives into a
-//! single merged [`Viafile`] for the rest of the pipeline (validate/resolve/run).
+//! The import loader: turns a root `tasks.alors` plus its `import` directives into a
+//! single merged [`Taskfile`] for the rest of the pipeline (validate/resolve/run).
 //!
-//! Design, matching via's "everything explicit, checked up front" stance:
+//! Design, matching alors's "everything explicit, checked up front" stance:
 //!   - **Pure parser, IO here.** [`crate::parser::parse`] stays filesystem-free
 //!     and only *records* imports; this module does the reads and the merge.
 //!   - **Two import shapes.** `import "x"` merges flat (imported tasks keep their
 //!     names); `import "x" as ns` nests the whole file under `ns` — every
 //!     imported task's path *and its internal dependency references* are
-//!     prefixed, so the CLI form (`via ns task`) and dep form (`ns::task`) stay
-//!     the single unified path via already uses.
+//!     prefixed, so the CLI form (`alors ns task`) and dep form (`ns::task`) stay
+//!     the single unified path alors already uses.
 //!   - **All clashes are errors.** Any two files defining the same final task
 //!     name is a hard error, reported before anything runs. Namespacing
 //!     (`as ns`) is how you disambiguate.
@@ -18,7 +18,7 @@
 //! Paths in an `import` are resolved relative to the directory of the file that
 //! contains the directive.
 
-use crate::parser::{self, Task, Viafile};
+use crate::parser::{self, Task, Taskfile};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -104,9 +104,9 @@ impl std::fmt::Display for LoadError {
     }
 }
 
-/// Load `path` and everything it imports into one merged [`Viafile`].
-pub fn load(path: &Path) -> Result<Viafile, LoadError> {
-    let mut merged = Viafile::default();
+/// Load `path` and everything it imports into one merged [`Taskfile`].
+pub fn load(path: &Path) -> Result<Taskfile, LoadError> {
+    let mut merged = Taskfile::default();
     let mut stack: Vec<(PathBuf, String)> = Vec::new();
     load_into(path, None, &mut merged, &mut stack)?;
     Ok(merged)
@@ -119,7 +119,7 @@ pub fn load(path: &Path) -> Result<Viafile, LoadError> {
 fn load_into(
     path: &Path,
     from: Option<(String, usize)>,
-    merged: &mut Viafile,
+    merged: &mut Taskfile,
     stack: &mut Vec<(PathBuf, String)>,
 ) -> Result<(), LoadError> {
     let label = path.display().to_string();
@@ -160,7 +160,7 @@ fn load_into(
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     for import in &parsed.imports {
         let child = base.join(&import.path);
-        let mut sub = Viafile::default();
+        let mut sub = Taskfile::default();
         load_into(&child, Some((label.clone(), import.line)), &mut sub, stack)?;
         if let Some(ns) = &import.alias {
             apply_namespace(&mut sub, ns);
@@ -187,7 +187,7 @@ fn load_into(
 }
 
 /// Insert `task` into `merged`, treating any name collision as a hard error.
-fn merge_one(merged: &mut Viafile, task: Task) -> Result<(), LoadError> {
+fn merge_one(merged: &mut Taskfile, task: Task) -> Result<(), LoadError> {
     let key = task.path.join("::");
     if let Some(existing) = merged.tasks.get(&key) {
         return Err(LoadError::Clash {
@@ -203,7 +203,7 @@ fn merge_one(merged: &mut Viafile, task: Task) -> Result<(), LoadError> {
 /// Nest every task in `sub` under namespace `ns`: prefix each task's path
 /// and each of its dependency references. Because an imported file's deps point
 /// only within its own (sub)tree, prefixing them uniformly keeps them resolving.
-fn apply_namespace(sub: &mut Viafile, ns: &[String]) {
+fn apply_namespace(sub: &mut Taskfile, ns: &[String]) {
     let old = std::mem::take(&mut sub.tasks);
     for (_, mut task) in old {
         task.path = prefixed(ns, &task.path);

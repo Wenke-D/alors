@@ -1,6 +1,6 @@
 //! End-to-end tests for the import loader: flat vs. namespaced merge, clash
 //! detection, missing files, and import cycles. These exercise real filesystem
-//! reads, so each test builds a throwaway directory of viafiles.
+//! reads, so each test builds a throwaway directory of task files.
 
 #[path = "../src/parser.rs"]
 mod parser;
@@ -22,7 +22,7 @@ impl Sandbox {
     fn new() -> Self {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("via-imports-{}-{}", std::process::id(), n));
+        let dir = std::env::temp_dir().join(format!("alors-imports-{}-{}", std::process::id(), n));
         std::fs::create_dir_all(&dir).expect("create sandbox");
         Sandbox { dir }
     }
@@ -54,10 +54,10 @@ fn path(segs: &[&str]) -> Vec<String> {
 #[test]
 fn flat_import_merges_tasks_keeping_names() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"lib.viafile\"\nbuild:\n    echo build\n");
-    sb.write("lib.viafile", "lint:\n    echo lint\n");
+    sb.write("tasks.alors", "import \"lib.alors\"\nbuild:\n    echo build\n");
+    sb.write("lib.alors", "lint:\n    echo lint\n");
 
-    let v = loader::load(&sb.path("viafile")).expect("load ok");
+    let v = loader::load(&sb.path("tasks.alors")).expect("load ok");
     assert!(v.get(&path(&["build"])).is_some());
     assert!(v.get(&path(&["lint"])).is_some(), "imported task keeps its name");
 }
@@ -65,13 +65,13 @@ fn flat_import_merges_tasks_keeping_names() {
 #[test]
 fn namespaced_import_prefixes_paths_and_internal_deps() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"docker.viafile\" as docker\n");
+    sb.write("tasks.alors", "import \"docker.alors\" as docker\n");
     sb.write(
-        "docker.viafile",
+        "docker.alors",
         "build:\n    echo build\nrelease: build\n    echo release\n",
     );
 
-    let v = loader::load(&sb.path("viafile")).expect("load ok");
+    let v = loader::load(&sb.path("tasks.alors")).expect("load ok");
 
     // Both tasks are nested under `docker`.
     assert!(v.get(&path(&["docker", "build"])).is_some());
@@ -89,10 +89,10 @@ fn namespaced_import_prefixes_paths_and_internal_deps() {
 #[test]
 fn duplicate_task_across_files_is_a_clash() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"lib.viafile\"\nbuild:\n    echo local\n");
-    sb.write("lib.viafile", "build:\n    echo imported\n");
+    sb.write("tasks.alors", "import \"lib.alors\"\nbuild:\n    echo local\n");
+    sb.write("lib.alors", "build:\n    echo imported\n");
 
-    let err = loader::load(&sb.path("viafile")).expect_err("should clash");
+    let err = loader::load(&sb.path("tasks.alors")).expect_err("should clash");
     match err {
         LoadError::Clash { name, .. } => assert_eq!(name, "build"),
         other => panic!("expected clash, got {:?}", other),
@@ -102,10 +102,10 @@ fn duplicate_task_across_files_is_a_clash() {
 #[test]
 fn namespacing_avoids_what_would_otherwise_clash() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"lib.viafile\" as lib\nbuild:\n    echo local\n");
-    sb.write("lib.viafile", "build:\n    echo imported\n");
+    sb.write("tasks.alors", "import \"lib.alors\" as lib\nbuild:\n    echo local\n");
+    sb.write("lib.alors", "build:\n    echo imported\n");
 
-    let v = loader::load(&sb.path("viafile")).expect("namespacing disambiguates");
+    let v = loader::load(&sb.path("tasks.alors")).expect("namespacing disambiguates");
     assert!(v.get(&path(&["build"])).is_some());
     assert!(v.get(&path(&["lib", "build"])).is_some());
 }
@@ -113,9 +113,9 @@ fn namespacing_avoids_what_would_otherwise_clash() {
 #[test]
 fn missing_import_reports_the_directive_site() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"nope.viafile\"\nbuild:\n    echo build\n");
+    sb.write("tasks.alors", "import \"nope.alors\"\nbuild:\n    echo build\n");
 
-    let err = loader::load(&sb.path("viafile")).expect_err("missing file");
+    let err = loader::load(&sb.path("tasks.alors")).expect_err("missing file");
     match err {
         LoadError::Read { from: Some((_, line)), .. } => assert_eq!(line, 1),
         other => panic!("expected read error pointing at the import, got {:?}", other),
@@ -125,11 +125,11 @@ fn missing_import_reports_the_directive_site() {
 #[test]
 fn import_cycle_is_detected() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"a.viafile\"\n");
-    sb.write("a.viafile", "import \"b.viafile\"\nag:\n    echo a\n");
-    sb.write("b.viafile", "import \"a.viafile\"\nbg:\n    echo b\n");
+    sb.write("tasks.alors", "import \"a.alors\"\n");
+    sb.write("a.alors", "import \"b.alors\"\nag:\n    echo a\n");
+    sb.write("b.alors", "import \"a.alors\"\nbg:\n    echo b\n");
 
-    let err = loader::load(&sb.path("viafile")).expect_err("cycle");
+    let err = loader::load(&sb.path("tasks.alors")).expect_err("cycle");
     assert!(matches!(err, LoadError::Cycle { .. }), "got {:?}", err);
 }
 
@@ -138,10 +138,10 @@ fn parent_may_give_an_as_namespace_a_default_task() {
     let sb = Sandbox::new();
     // A bare `ci` task (path == the namespace) is allowed: it gives the
     // namespace an action without reaching inside it.
-    sb.write("viafile", "import \"sub.via\" as ci\nci: ci::test, ci::build\n");
-    sb.write("sub.via", "test:\n    echo t\nbuild:\n    echo b\n");
+    sb.write("tasks.alors", "import \"sub.alors\" as ci\nci: ci::test, ci::build\n");
+    sb.write("sub.alors", "test:\n    echo t\nbuild:\n    echo b\n");
 
-    let v = loader::load(&sb.path("viafile")).expect("default task is allowed");
+    let v = loader::load(&sb.path("tasks.alors")).expect("default task is allowed");
     // `ci` is both a task and a namespace.
     assert!(v.get(&path(&["ci"])).is_some());
     assert!(v.get(&path(&["ci", "test"])).is_some());
@@ -151,12 +151,12 @@ fn parent_may_give_an_as_namespace_a_default_task() {
 fn parent_may_not_extend_a_sealed_as_namespace() {
     let sb = Sandbox::new();
     sb.write(
-        "viafile",
-        "import \"sub.via\" as ci\nci::deploy:\n    echo deploy\n",
+        "tasks.alors",
+        "import \"sub.alors\" as ci\nci::deploy:\n    echo deploy\n",
     );
-    sb.write("sub.via", "test:\n    echo t\n");
+    sb.write("sub.alors", "test:\n    echo t\n");
 
-    let err = loader::load(&sb.path("viafile")).expect_err("extend should be sealed");
+    let err = loader::load(&sb.path("tasks.alors")).expect_err("extend should be sealed");
     match err {
         LoadError::SealedNamespace { namespace, task, .. } => {
             assert_eq!(namespace, "ci");
@@ -169,11 +169,11 @@ fn parent_may_not_extend_a_sealed_as_namespace() {
 #[test]
 fn parent_may_not_redefine_a_task_in_a_sealed_namespace() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"sub.via\" as ci\nci::test:\n    echo mine\n");
-    sb.write("sub.via", "test:\n    echo t\n");
+    sb.write("tasks.alors", "import \"sub.alors\" as ci\nci::test:\n    echo mine\n");
+    sb.write("sub.alors", "test:\n    echo t\n");
 
     // Redefining an imported task is forbidden too (caught as a seal violation).
-    let err = loader::load(&sb.path("viafile")).expect_err("redefine should be forbidden");
+    let err = loader::load(&sb.path("tasks.alors")).expect_err("redefine should be forbidden");
     assert!(
         matches!(err, LoadError::SealedNamespace { .. } | LoadError::Clash { .. }),
         "got {:?}",
@@ -184,22 +184,22 @@ fn parent_may_not_redefine_a_task_in_a_sealed_namespace() {
 #[test]
 fn two_imports_cannot_fill_the_same_namespace() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"a.via\" as ci\nimport \"b.via\" as ci\n");
-    sb.write("a.via", "test:\n    echo a\n");
-    sb.write("b.via", "build:\n    echo b\n");
+    sb.write("tasks.alors", "import \"a.alors\" as ci\nimport \"b.alors\" as ci\n");
+    sb.write("a.alors", "test:\n    echo a\n");
+    sb.write("b.alors", "build:\n    echo b\n");
 
-    let err = loader::load(&sb.path("viafile")).expect_err("one import per as-namespace");
+    let err = loader::load(&sb.path("tasks.alors")).expect_err("one import per as-namespace");
     assert!(matches!(err, LoadError::SealedNamespace { .. }), "got {:?}", err);
 }
 
 #[test]
 fn imports_nest_transitively() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"a.viafile\" as outer\n");
-    sb.write("a.viafile", "import \"b.viafile\" as inner\n");
-    sb.write("b.viafile", "build:\n    echo deep\n");
+    sb.write("tasks.alors", "import \"a.alors\" as outer\n");
+    sb.write("a.alors", "import \"b.alors\" as inner\n");
+    sb.write("b.alors", "build:\n    echo deep\n");
 
-    let v = loader::load(&sb.path("viafile")).expect("load ok");
+    let v = loader::load(&sb.path("tasks.alors")).expect("load ok");
     assert!(
         v.get(&path(&["outer", "inner", "build"])).is_some(),
         "transitive `as` prefixes stack: outer::inner::build"
@@ -209,12 +209,12 @@ fn imports_nest_transitively() {
 #[test]
 fn imports_resolve_relative_to_the_importing_file() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"sub/child.viafile\"\n");
-    // child.viafile imports a sibling using a path relative to sub/, not the root.
-    sb.write("sub/child.viafile", "import \"helper.viafile\"\n");
-    sb.write("sub/helper.viafile", "help:\n    echo help\n");
+    sb.write("tasks.alors", "import \"sub/child.alors\"\n");
+    // child.alors imports a sibling using a path relative to sub/, not the root.
+    sb.write("sub/child.alors", "import \"helper.alors\"\n");
+    sb.write("sub/helper.alors", "help:\n    echo help\n");
 
-    let v = loader::load(&sb.path("viafile")).expect("relative resolution");
+    let v = loader::load(&sb.path("tasks.alors")).expect("relative resolution");
     assert!(v.get(&path(&["help"])).is_some());
 }
 
@@ -224,15 +224,15 @@ fn constants_are_file_local_across_imports() {
     // Root and import each define their own `version`; each file's tasks see
     // only their own value, and an unknown name is NOT filled by the other file.
     sb.write(
-        "viafile",
-        "import \"lib.viafile\"\nversion := root-1\nshow:\n    echo {{version}} {{libonly}}\n",
+        "tasks.alors",
+        "import \"lib.alors\"\nversion := root-1\nshow:\n    echo {{version}} {{libonly}}\n",
     );
     sb.write(
-        "lib.viafile",
+        "lib.alors",
         "version := lib-2\nlibonly := L\nlibshow:\n    echo {{version}}\n",
     );
 
-    let v = loader::load(&sb.path("viafile")).expect("load ok");
+    let v = loader::load(&sb.path("tasks.alors")).expect("load ok");
     let show = v.get(&path(&["show"])).expect("show exists");
     assert_eq!(show.body, vec!["echo root-1 {{libonly}}".to_string()]);
     let libshow = v.get(&path(&["libshow"])).expect("libshow exists");
@@ -242,10 +242,10 @@ fn constants_are_file_local_across_imports() {
 #[test]
 fn same_constant_in_two_files_is_not_a_clash() {
     let sb = Sandbox::new();
-    sb.write("viafile", "import \"lib.viafile\"\nx := 1\na:\n    echo {{x}}\n");
-    sb.write("lib.viafile", "x := 2\nb:\n    echo {{x}}\n");
+    sb.write("tasks.alors", "import \"lib.alors\"\nx := 1\na:\n    echo {{x}}\n");
+    sb.write("lib.alors", "x := 2\nb:\n    echo {{x}}\n");
 
-    let v = loader::load(&sb.path("viafile")).expect("file-local constants never clash");
+    let v = loader::load(&sb.path("tasks.alors")).expect("file-local constants never clash");
     assert_eq!(v.get(&path(&["a"])).unwrap().body, vec!["echo 1".to_string()]);
     assert_eq!(v.get(&path(&["b"])).unwrap().body, vec!["echo 2".to_string()]);
 }

@@ -9,21 +9,21 @@
 //! by starting with `set +e`. The first non-zero exit aborts the sequence. A
 //! body's commands are echoed to stderr (bold on a TTY) just before it runs.
 //!
-//! Parameters are made available two ways: as environment variables and via
+//! Parameters are made available two ways: as environment variables and alors
 //! `{{name}}` substitution in the body text.
 
-use crate::parser::{Task, Viafile};
+use crate::parser::{Task, Taskfile};
 use crate::resolver::Resolved;
 use crate::validate::plan;
 use std::process::Command;
 
-pub fn execute(viafile: &Viafile, resolved: &Resolved) -> i32 {
+pub fn execute(taskfile: &Taskfile, resolved: &Resolved) -> i32 {
     // The plan threads arguments through the graph: the invoked task gets its
     // CLI args, and each dependency gets the args its edge declared.
-    let order = plan(viafile, &resolved.task.path, &resolved.args);
+    let order = plan(taskfile, &resolved.task.path, &resolved.args);
 
     for node in &order {
-        let task = viafile.get(&node.path).expect("planned task exists");
+        let task = taskfile.get(&node.path).expect("planned task exists");
         let code = run_task(task, &node.args);
         if code != 0 {
             return code;
@@ -86,7 +86,7 @@ fn run_task(task: &Task, args: &[(String, String)]) -> i32 {
         Ok(status) => status.code().unwrap_or(1),
         Err(e) => {
             eprintln!(
-                "via: failed to execute task `{}`: {}",
+                "alors: failed to execute task `{}`: {}",
                 task.display_name(),
                 e
             );

@@ -1,12 +1,12 @@
-# viafile syntax highlighting
+# alors syntax highlighting
 
-Syntax highlighting for **`viafile`** — the tasks file used by
-[**via**](https://github.com/Wenke-D/via), a small command-line tool that gathers
-your project's commands (configure, build, test, deploy…) into one CLI you run as
-`via <task>`.
+Syntax highlighting for **`.alors`** files — the tasks files used by
+[**alors**](https://github.com/Wenke-D/alors), a small command-line tool that
+gathers your project's commands (configure, build, test, deploy…) into one CLI
+you run as `alors <task>`.
 
-If you keep a `viafile` in your project, this extension colorizes it so it's easy
-to read and edit.
+If you keep a `tasks.alors` in your project, this extension colorizes it (and
+every imported `.alors` file) so it's easy to read and edit.
 
 ## What it highlights
 
@@ -18,14 +18,12 @@ to read and edit.
 
 ## When it activates
 
-Automatically, for any file:
-
-- named `viafile` (or matching `*viafile`, e.g. `example-viafile`), or
-- with a `.viafile` extension.
+Automatically, for any file with the `.alors` extension — the `tasks.alors`
+entry point and the files it imports alike.
 
 ## Example
 
-```viafile
+```alors
 # configure the CMake build tree
 configure:
     cmake -S . -B build
@@ -39,16 +37,16 @@ test name:
     ctest --test-dir build -R {{name}}
 ```
 
-Run it with `via build`, `via test MySuite`, and so on.
+Run it with `alors build`, `alors test MySuite`, and so on.
 
-## About via
+## About alors
 
-`via` is a project-local task runner in the spirit of
+`alors` is a project-local task runner in the spirit of
 [`make`](https://www.gnu.org/software/make/) and
 [`just`](https://github.com/casey/just), with first-class **subcommands**
-(`via docker build`). It's a single, dependency-free binary.
+(`alors docker build`). It's a single, dependency-free binary.
 
-**Project & docs:** https://github.com/Wenke-D/via
+**Project & docs:** https://github.com/Wenke-D/alors
 
 ## License
 

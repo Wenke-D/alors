@@ -1,6 +1,6 @@
-# Local test pipeline for the via project itself.
-# Imported by the root viafile as `ci`. The root defines the bare `ci` task,
-# so `via ci` runs the pipeline; `via ci test`, `via ci build`, ... run these.
+# Local test pipeline for the alors project itself.
+# Imported by the root tasks.alors as `ci`. The root defines the bare `ci` task,
+# so `alors ci` runs the pipeline; `alors ci test`, `alors ci build`, ... run these.
 
 # run the unit + integration test suite
 test:
@@ -10,8 +10,8 @@ test:
 build:
     cargo build --release --locked
 
-# Note: the pipeline entry point is the bare `ci` task in the ROOT viafile
-# (`ci: ci::test ci::build`), so `via ci` runs test-then-build. It can't live
+# Note: the pipeline entry point is the bare `ci` task in the ROOT tasks.alors
+# (`ci: ci::test ci::build`), so `alors ci` runs test-then-build. It can't live
 # here — every task in this imported file is prefixed `ci::`, so this file
 # cannot define a bare `ci`.
 

@@ -1,4 +1,4 @@
-//! The CLI resolver: implements the strict `via` parse model.
+//! The CLI resolver: implements the strict `alors` parse model.
 //!
 //! Rules (final spec):
 //!   1. One task per invocation.
@@ -10,7 +10,7 @@
 //!      bare invocation of the namespace is an error listing its sub-tasks.
 //!   6. `--` is illegal anywhere.
 
-use crate::parser::{Task, Viafile};
+use crate::parser::{Task, Taskfile};
 
 #[derive(Debug)]
 pub enum ResolveError {
@@ -44,7 +44,7 @@ impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ResolveError::DashDashForbidden => {
-                write!(f, "`--` is not allowed in via invocations")
+                write!(f, "`--` is not allowed in alors invocations")
             }
             ResolveError::UnknownCommand {
                 token,
@@ -111,8 +111,8 @@ pub struct Resolved<'a> {
     pub args: Vec<(String, String)>,
 }
 
-/// Resolve CLI tokens against the parsed viafile.
-pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'a>, ResolveError> {
+/// Resolve CLI tokens against the parsed taskfile.
+pub fn resolve<'a>(taskfile: &'a Taskfile, tokens: &[String]) -> Result<Resolved<'a>, ResolveError> {
     // Rule 6: `--` is illegal anywhere.
     if tokens.iter().any(|t| t == "--") {
         return Err(ResolveError::DashDashForbidden);
@@ -130,8 +130,8 @@ pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'
                 let mut candidate = path.clone();
                 candidate.push(tok.clone());
 
-                let is_task = viafile.get(&candidate).is_some();
-                let is_ns = viafile.is_namespace(&candidate);
+                let is_task = taskfile.get(&candidate).is_some();
+                let is_ns = taskfile.is_namespace(&candidate);
 
                 if is_task || is_ns {
                     // Token is part of the path (path always wins). Descend.
@@ -148,7 +148,7 @@ pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'
                         if let Some(peek) = tokens.get(idx) {
                             let mut deeper = path.clone();
                             deeper.push(peek.clone());
-                            if viafile.get(&deeper).is_some() || viafile.is_namespace(&deeper) {
+                            if taskfile.get(&deeper).is_some() || taskfile.is_namespace(&deeper) {
                                 // Continue descending; path wins.
                                 continue;
                             }
@@ -166,14 +166,14 @@ pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'
                         return Err(ResolveError::UnknownCommand {
                             token: tok.clone(),
                             scope: vec![],
-                            available: viafile.children(&[]),
+                            available: taskfile.children(&[]),
                         });
                     }
                     // We're mid-path at a namespace with no task here, or at a
                     // task already (handled above). If current path is a task,
                     // we wouldn't be here. So current path is a namespace ->
                     // it needs a default task to absorb this token as an arg.
-                    if viafile.get(&path).is_some() {
+                    if taskfile.get(&path).is_some() {
                         // Has default task; token is an argument. Stop descent.
                         break;
                     }
@@ -181,7 +181,7 @@ pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'
                     return Err(ResolveError::UnknownCommand {
                         token: tok.clone(),
                         scope: path.clone(),
-                        available: viafile.children(&path),
+                        available: taskfile.children(&path),
                     });
                 }
             }
@@ -193,20 +193,20 @@ pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'
     }
 
     // After Phase 1, `path` is either a task or a bare namespace.
-    let task = match viafile.get(&path) {
+    let task = match taskfile.get(&path) {
         Some(r) => r,
         None => {
             // Bare namespace (or empty). Needs a subcommand.
             if path.is_empty() {
-                // `via` with no args and no top-level default -> list everything.
+                // `alors` with no args and no top-level default -> list everything.
                 return Err(ResolveError::NamespaceNeedsSubcommand {
                     path: vec![],
-                    available: viafile.children(&[]),
+                    available: taskfile.children(&[]),
                 });
             }
             return Err(ResolveError::NamespaceNeedsSubcommand {
                 path: path.clone(),
-                available: viafile.children(&path),
+                available: taskfile.children(&path),
             });
         }
     };

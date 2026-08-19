@@ -4,11 +4,11 @@
 #[path = "../src/parser.rs"]
 mod parser;
 
-fn vf(src: &str) -> parser::Viafile {
+fn vf(src: &str) -> parser::Taskfile {
     parser::parse(src).expect("parse ok")
 }
 
-fn body_of(v: &parser::Viafile, name: &str) -> String {
+fn body_of(v: &parser::Taskfile, name: &str) -> String {
     v.tasks.get(name).expect("task exists").body.join("\n")
 }
 

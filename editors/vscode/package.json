@@ -1,8 +1,8 @@
 {
-  "name": "viafile",
-  "displayName": "viafile — via project CLI",
-  "description": "Syntax highlighting for viafile, the tasks file for via — a CLI for your project.",
-  "version": "0.0.1",
+  "name": "alors",
+  "displayName": "alors — tasks file for the alors CLI",
+  "description": "Syntax highlighting for .alors files — the tasks files for alors, a CLI for your project.",
+  "version": "0.1.0",
   "publisher": "wenke",
   "license": "MIT",
   "engines": {
@@ -12,45 +12,39 @@
     "Programming Languages"
   ],
   "keywords": [
-    "viafile",
-    "via",
+    "alors",
+    "tasks.alors",
     "cli",
     "syntax highlighting"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Wenke-D/via.git",
+    "url": "https://github.com/Wenke-D/alors.git",
     "directory": "editors/vscode"
   },
-  "homepage": "https://github.com/Wenke-D/via/tree/main/editors/vscode",
+  "homepage": "https://github.com/Wenke-D/alors/tree/main/editors/vscode",
   "bugs": {
-    "url": "https://github.com/Wenke-D/via/issues"
+    "url": "https://github.com/Wenke-D/alors/issues"
   },
   "contributes": {
     "languages": [
       {
-        "id": "viafile",
+        "id": "alors",
         "aliases": [
-          "viafile",
-          "Viafile"
-        ],
-        "filenames": [
-          "viafile"
-        ],
-        "filenamePatterns": [
-          "*viafile"
+          "alors",
+          "Alors"
         ],
         "extensions": [
-          ".viafile"
+          ".alors"
         ],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "viafile",
-        "scopeName": "source.viafile",
-        "path": "./syntaxes/viafile.tmLanguage.json"
+        "language": "alors",
+        "scopeName": "source.alors",
+        "path": "./syntaxes/alors.tmLanguage.json"
       }
     ]
   }

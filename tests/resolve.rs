@@ -5,7 +5,7 @@ mod resolver;
 
 use resolver::ResolveError;
 
-fn vf(src: &str) -> parser::Viafile { parser::parse(src).expect("parse ok") }
+fn vf(src: &str) -> parser::Taskfile { parser::parse(src).expect("parse ok") }
 fn toks(s: &[&str]) -> Vec<String> { s.iter().map(|x| x.to_string()).collect() }
 
 const SAMPLE: &str = r#"

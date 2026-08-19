@@ -2,11 +2,11 @@
   "editor.tokenColorCustomizations": {
     "textMateRules": [
       {
-        "scope": "entity.name.function.task.viafile",
+        "scope": "entity.name.function.task.alors",
         "settings": { "fontStyle": "bold" }
       },
       {
-        "scope": "punctuation.separator.namespace.viafile",
+        "scope": "punctuation.separator.namespace.alors",
         "settings": { "foreground": "#2f81f7" }
       }
     ]

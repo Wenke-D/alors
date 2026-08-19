@@ -1,13 +1,13 @@
-import "via/help.via"
+import "alors/help.alors"
 
-import "via/help2.via" as help2
+import "alors/help2.alors" as help2
 
-# the project's own local test pipeline: `via ci test`, `via ci build`, ...
-import "via/ci.via" as ci
+# the project's own local test pipeline: `alors ci test`, `alors ci build`, ...
+import "alors/ci.alors" as ci
 
-# `via ci` runs the whole pipeline (test, then release build); `via ci test` and
-# friends still work as subcommands. This bare `ci` task lives in the root
-# because everything in the imported via/ci.via is prefixed `ci::`.
+# `alors ci` runs the whole pipeline (test, then release build); `alors ci test`
+# and friends still work as subcommands. This bare `ci` task lives in the root
+# because everything in the imported alors/ci.alors is prefixed `ci::`.
 ci: ci::test, ci::build
 
 # configure the CMake build tree
@@ -21,7 +21,7 @@ compile:
 # the everyday task: configure, then compile (deps run first, in order)
 build: configure, compile
 
-# build is also a namespace: `via build release` for an optimized build
+# build is also a namespace: `alors build release` for an optimized build
 build::release:
     echo "[build::release] cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build"
 
@@ -29,7 +29,7 @@ build::release:
 test name:
     echo "[test] ctest --test-dir build -R {{name}}"
 
-# a sequence that passes a fixed argument to a task: `via smoke` runs `test`
+# a sequence that passes a fixed argument to a task: `alors smoke` runs `test`
 # with name=smoke first (comma-separated deps can carry positional args)
 smoke: test smoke
     echo "[smoke] done"
@@ -38,13 +38,13 @@ smoke: test smoke
 clean:
     echo "[clean] rm -rf build"
 
-# build the optimized binary and install it as /usr/local/bin/via
+# build the optimized binary and install it as /usr/local/bin/alors
 install:
     cargo build --release
-    dest=/usr/local/bin/via
-    if cp target/release/via "$dest" 2>/dev/null; then
+    dest=/usr/local/bin/alors
+    if cp target/release/alors "$dest" 2>/dev/null; then
         echo "installed -> $dest"
     else
         echo "writing $dest needs elevated permissions..."
-        sudo install -m 755 target/release/via "$dest" && echo "installed -> $dest"
+        sudo install -m 755 target/release/alors "$dest" && echo "installed -> $dest"
     fi

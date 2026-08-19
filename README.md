@@ -1,14 +1,14 @@
-# via — a CLI for your project
+# alors — a CLI for your project
 
 Every project accumulates commands: configure, compile, test, package, clean.
-`via` gathers them into a single command-line tool for your project. You write
-the commands once as named **tasks** in a `viafile`, and run them with
-`via <task>`.
+`alors` gathers them into a single command-line tool for your project. You write
+the commands once as named **tasks** in a `tasks.alors` file, and run them with
+`alors <task>`.
 
 It follows in the footsteps of [`make`](https://www.gnu.org/software/make/)
 (originally written by Stuart Feldman at Bell Labs; GNU Make today) and
 [`just`](https://github.com/casey/just) (by Casey Rodarmor) — the same idea of a
-project-local file full of named tasks — and owes both a great deal. `via`
+project-local file full of named tasks — and owes both a great deal. `alors`
 keeps that core idea and makes a few different choices around how tasks are named
 and invoked (see [Subcommands](#subcommands)).
 
@@ -20,42 +20,43 @@ executable, and drop it on your `PATH`:
 **Linux (x86_64)**
 
 ```
-curl -L -o via https://github.com/Wenke-D/via/releases/latest/download/via-linux-x86_64
-chmod +x via && sudo mv via /usr/local/bin/
+curl -L -o alors https://github.com/Wenke-D/alors/releases/latest/download/alors-linux-x86_64
+chmod +x alors && sudo mv alors /usr/local/bin/
 ```
 
 **macOS (Apple Silicon)**
 
 ```
-curl -L -o via https://github.com/Wenke-D/via/releases/latest/download/via-macos-arm64
-chmod +x via && sudo mv via /usr/local/bin/
+curl -L -o alors https://github.com/Wenke-D/alors/releases/latest/download/alors-macos-arm64
+chmod +x alors && sudo mv alors /usr/local/bin/
 ```
 
 The Linux binary is statically linked (musl), so it runs on any distribution
 with nothing else to install. On macOS, Gatekeeper blocks unsigned downloads —
-clear the quarantine flag with `xattr -d com.apple.quarantine via` (or right-click
-→ Open the first time).
+clear the quarantine flag with `xattr -d com.apple.quarantine alors` (or
+right-click → Open the first time).
 
-Prefer to build it yourself? `cargo build --release` (or `via install`, which
+Prefer to build it yourself? `cargo build --release` (or `alors install`, which
 builds and installs to `/usr/local/bin`).
 
 ## Features
 
-- **Tasks in a `viafile`.** Define a command once; run it as `via <task>`.
-- **Parameters.** A task can take positional arguments: `via test MySuite`.
+- **Tasks in a `tasks.alors` file.** Define a command once; run it as
+  `alors <task>`.
+- **Parameters.** A task can take positional arguments: `alors test MySuite`.
 - **Constants.** `version := 1.4.2` shares a literal value across tasks.
 - **Sequencing.** A task can depend on other tasks, which run first, in order.
-- **Subcommands.** Tasks can be grouped into namespaces: `via docker build`.
+- **Subcommands.** Tasks can be grouped into namespaces: `alors docker build`.
 - **Validated up front.** The whole file is checked before anything runs —
   unknown dependencies and dependency cycles are reported, not discovered
   mid-run.
-- **One file, current directory.** `via` reads the `viafile` in the directory you
-  run it from. No searching up the tree.
+- **One file, current directory.** `alors` reads the `tasks.alors` in the
+  directory you run it from. No searching up the tree.
 
-## Defining a viafile
+## Defining tasks
 
-A `viafile` is a list of tasks. Each task is a name ending in `:`, followed by an
-indented body — the shell commands to run.
+A `tasks.alors` file is a list of tasks. Each task is a name ending in `:`,
+followed by an indented body — the shell commands to run.
 
 ```
 # configure the CMake build tree
@@ -74,17 +75,17 @@ clean:
 Run a task by name:
 
 ```
-via configure        # runs: cmake -S . -B build
-via clean            # runs: rm -rf build
-via                  # with no task, lists everything available
-via help             # usage + the task list (also --help)
-via --help-ai        # usage notes written for AI agents
-via --version        # print the version
+alors configure      # runs: cmake -S . -B build
+alors clean          # runs: rm -rf build
+alors                # with no task, lists everything available
+alors --help         # usage + the task list
+alors --help-ai      # usage notes written for AI agents
+alors --version      # print the version
 ```
 
-> `--help` always shows via's help. The bare word `help` does too,
-> unless the viafile defines its own `help` task — a name you chose keeps
-> working, same as the `import:` rule below.
+> Help lives behind `--help` only. The bare word `help` is an ordinary task
+> name — if your file defines a `help` task, `alors help` runs it, same as
+> the `import:` rule below.
 
 A task can take a parameter, used in the body as `{{name}}` (or `$name`):
 
@@ -94,7 +95,7 @@ test name:
 ```
 
 ```
-via test MySuite     # runs: ctest --test-dir build -R MySuite
+alors test MySuite   # runs: ctest --test-dir build -R MySuite
 ```
 
 ### How a body runs
@@ -177,7 +178,7 @@ build: configure, compile
 ```
 
 ```
-via build            # runs configure, then compile
+alors build          # runs configure, then compile
 ```
 
 ### Passing arguments to a sequenced task
@@ -190,7 +191,7 @@ a parameterized task with a value fixed right in the file:
 test name:
     ctest --test-dir build -R {{name}}
 
-# `via ci` runs `test smoke`, then `lint`
+# `alors ci` runs `test smoke`, then `lint`
 ci: test smoke, lint
 ```
 
@@ -198,7 +199,7 @@ An argument may also be a `{{param}}` of the **declaring** task, forwarding its
 own value down the chain (use `"quotes"` for a value with spaces):
 
 ```
-# `via check integration` runs `test integration`, then echoes
+# `alors check integration` runs `test integration`, then echoes
 check suite: test {{suite}}
     echo "checked {{suite}}"
 ```
@@ -211,13 +212,13 @@ anything runs, so a wrong argument count or a cycle is a clear up-front error, n
 a mid-run surprise:
 
 ```
-via: dependency cycle: build -> compile -> build
+alors: dependency cycle: build -> compile -> build
 ```
 
 ## Subcommands
 
 Tasks can be grouped into namespaces with `::`. A task named `docker::build`
-becomes the subcommand `via docker build`:
+becomes the subcommand `alors docker build`:
 
 ```
 docker::build:
@@ -228,36 +229,38 @@ docker::push:
 ```
 
 ```
-via docker build     # runs docker::build
-via docker push      # runs docker::push
-via docker           # lists the docker subcommands
+alors docker build   # runs docker::build
+alors docker push    # runs docker::push
+alors docker         # lists the docker subcommands
 ```
 
 A namespace can also have a **default** task — the plain task with the same name.
-Given both `build:` and `build::release:`, `via build` runs the default and
-`via build release` runs the sub-task.
+Given both `build:` and `build::release:`, `alors build` runs the default and
+`alors build release` runs the sub-task.
 
 ### One task per invocation
 
-This is the main place `via` differs from `just`. In `just` you can run several
-tasks at once — `just configure compile test`. In `via` an invocation always
-selects **exactly one** task; the tokens after it are arguments or a subcommand
-path, never additional tasks. Running things in sequence is expressed *in the
-viafile* as dependencies (`build: configure, compile`), not assembled on the
-command line.
+This is the main place `alors` differs from `just`. In `just` you can run
+several tasks at once — `just configure compile test`. In `alors` an invocation
+always selects **exactly one** task; the tokens after it are arguments or a
+subcommand path, never additional tasks. Running things in sequence is expressed
+*in the file* as dependencies (`build: configure, compile`), not assembled on
+the command line.
 
 A consequence: a token that matches a subcommand is always treated as part of
 the path, so it can never be mistaken for an argument.
 
 ## Imports
 
-A viafile can pull tasks in from other files with `import`, so shared tasks
-live in one place and projects compose them. The path is **quoted** and resolved
-**relative to the importing file's directory**:
+A `tasks.alors` file can pull tasks in from other `.alors` files with `import`,
+so shared tasks live in one place and projects compose them. Every file uses the
+same `.alors` extension — `tasks.alors` is simply the well-known entry point.
+The path is **quoted** and resolved **relative to the importing file's
+directory**:
 
 ```
-import "ci/common.viafile"
-import "docker.viafile" as docker
+import "ci/common.alors"
+import "docker.alors" as docker
 
 build: lint, docker::build
     echo "everything built"
@@ -265,29 +268,29 @@ build: lint, docker::build
 
 There are two shapes:
 
-- **Flat** — `import "ci/common.viafile"` merges the imported tasks under their
-  own names. A `lint:` over there becomes `via lint` here.
-- **Namespaced** — `import "docker.viafile" as docker` nests the *whole* file
-  under a namespace. Its `build:` becomes `via docker build` (and `docker::build`
-  when referenced as a dependency). The imported file's own internal
-  dependencies are rewritten to match, so it doesn't need to know it was
-  namespaced — the importer decides the layout.
+- **Flat** — `import "ci/common.alors"` merges the imported tasks under their
+  own names. A `lint:` over there becomes `alors lint` here.
+- **Namespaced** — `import "docker.alors" as docker` nests the *whole* file
+  under a namespace. Its `build:` becomes `alors docker build` (and
+  `docker::build` when referenced as a dependency). The imported file's own
+  internal dependencies are rewritten to match, so it doesn't need to know it
+  was namespaced — the importer decides the layout.
 
 Once merged, imported tasks are ordinary tasks: you can depend on them
 (`build: lint, docker::build`) and invoke them just like local ones.
 
 An `as` namespace can also be given an **action** — a default task — by defining
-the bare name in the importing file. It runs on `via docker`, while the
+the bare name in the importing file. It runs on `alors docker`, while the
 subcommands still work:
 
 ```
-import "docker.viafile" as docker
+import "docker.alors" as docker
 
-# `via docker` builds then pushes; `via docker build` / `via docker push` still work
+# `alors docker` builds then pushes; `alors docker build` / `alors docker push` still work
 docker: docker::build, docker::push
 ```
 
-A few rules, in keeping with via's "checked up front" stance:
+A few rules, in keeping with alors's "checked up front" stance:
 
 - **Every name is unique.** If two files define the same final task name it's a
   hard error, reported before anything runs. Namespacing with `as` is how you
@@ -328,21 +331,23 @@ _Status: v0 prototype._
 
 ## The name
 
-`via` is short — a project's CLI is something you type all day, so the name
-should stay out of the way. It's also a real word: Latin for "way" or "road",
-and in English "by way of". Each invocation then reads like routing a command
-through your project — you get there *via* the project's own tasks, so
-`via build` is "build, by way of this project" and `via test` its tests.
+`alors` is French — the little word that announces the next move: "so", "well
+then", "right then". That's exactly the register of a project CLI. Each
+invocation reads like turning to the project and getting on with it:
+`alors build` is "right then — build", `alors test` "well, test it",
+`alors deploy` "so, deploy". You don't need the French to use it (plenty of
+beloved tools carry French names — Vite, Vue), but once you hear it, every
+command has a small narrative beat in front of it.
 
 ## Motivation
 
 I reach for a `justfile` in most of my projects, but I kept wanting real
 **subcommands** — grouping related tasks under a namespace like
-`via docker build` instead of flat names. That itch is what `via` scratches.
+`alors docker build` instead of flat names. That itch is what `alors` scratches.
 
 I mostly write Python and C++, but a small, fast, single-binary CLI is a better
 fit for **Rust** — no runtime to ship and nothing to install alongside it. I
 don't know Rust's exact syntax, though, so I built this by vibe-coding with
 [Claude](https://www.anthropic.com/claude): I described the behavior and the
 design choices I wanted, and Claude wrote and explained the Rust. Credit where
-it's due — `via` was written with Claude.
+it's due — `alors` was written with Claude.

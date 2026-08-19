@@ -1,9 +1,9 @@
 //! Phase-1 static validation of the dependency graph, plus the execution plan.
 //!
-//! This runs *before anything executes*, honoring via's rule that every failure
+//! This runs *before anything executes*, honoring alors's rule that every failure
 //! is explicit and nothing is run on an unsound file. Design choices:
 //!   - Whole-file: the entire graph is validated, not just the subgraph reachable
-//!     from the invoked task — a viafile is valid or it isn't, regardless of which
+//!     from the invoked task — a taskfile is valid or it isn't, regardless of which
 //!     task you ran.
 //!   - Aggregate: all edge-resolution errors are collected and reported together.
 //!   - Cycle detection runs only once every edge is known-good (so it can never
@@ -12,7 +12,7 @@
 //! Execution order (`plan`) is a deduped, deps-first, post-order DFS: each task
 //! runs at most once per invocation, dependencies before dependents.
 
-use crate::parser::Viafile;
+use crate::parser::Taskfile;
 use std::collections::HashSet;
 
 #[derive(Debug)]
@@ -141,19 +141,19 @@ impl std::fmt::Display for ValidateError {
 }
 
 /// Validate the whole dependency graph. Returns every problem found.
-pub fn validate(viafile: &Viafile) -> Result<(), Vec<ValidateError>> {
+pub fn validate(taskfile: &Taskfile) -> Result<(), Vec<ValidateError>> {
     let mut errors = Vec::new();
 
     // Phase A: every dependency edge must resolve to a runnable task, and its
     // arguments must fit that task's parameters.
-    for task in viafile.tasks.values() {
+    for task in taskfile.tasks.values() {
         let from = task.display_name();
         let line = task.line;
         let source = task.source.clone();
         let own_params: Vec<&str> = task.params.iter().map(|p| p.as_str()).collect();
         for dep in &task.deps {
             let dep_name = dep.path.join("::");
-            match viafile.get(&dep.path) {
+            match taskfile.get(&dep.path) {
                 Some(target) => {
                     let got = dep.args.len();
                     let max = target.params.len();
@@ -194,13 +194,13 @@ pub fn validate(viafile: &Viafile) -> Result<(), Vec<ValidateError>> {
                         }
                     }
                 }
-                None if viafile.is_namespace(&dep.path) => {
+                None if taskfile.is_namespace(&dep.path) => {
                     errors.push(ValidateError::DependencyIsNamespace {
                         source: source.clone(),
                         line,
                         task: from.clone(),
                         dep: dep_name,
-                        available: viafile.children(&dep.path),
+                        available: taskfile.children(&dep.path),
                     });
                 }
                 None => errors.push(ValidateError::UnknownDependency {
@@ -219,9 +219,9 @@ pub fn validate(viafile: &Viafile) -> Result<(), Vec<ValidateError>> {
     }
 
     // Phase B: cycle detection over the now fully-resolved graph.
-    if let Some(path) = find_cycle(viafile) {
+    if let Some(path) = find_cycle(taskfile) {
         // Point at the header of the first task in the loop.
-        let first = viafile.tasks.get(&path[0]);
+        let first = taskfile.tasks.get(&path[0]);
         let line = first.map(|r| r.line).unwrap_or(0);
         let source = first.map(|r| r.source.clone()).unwrap_or_default();
         return Err(vec![ValidateError::Cycle { source, line, path }]);
@@ -231,13 +231,13 @@ pub fn validate(viafile: &Viafile) -> Result<(), Vec<ValidateError>> {
 }
 
 /// Three-color DFS. Returns the cycle path (closed, e.g. build -> a -> build).
-fn find_cycle(viafile: &Viafile) -> Option<Vec<String>> {
+fn find_cycle(taskfile: &Taskfile) -> Option<Vec<String>> {
     // 0 = white (unseen), 1 = gray (on stack), 2 = black (done).
     let mut color: std::collections::HashMap<String, u8> = std::collections::HashMap::new();
     let mut stack: Vec<String> = Vec::new();
-    for key in viafile.tasks.keys() {
+    for key in taskfile.tasks.keys() {
         if color.get(key).copied().unwrap_or(0) == 0 {
-            if let Some(cycle) = dfs_cycle(viafile, key, &mut color, &mut stack) {
+            if let Some(cycle) = dfs_cycle(taskfile, key, &mut color, &mut stack) {
                 return Some(cycle);
             }
         }
@@ -246,7 +246,7 @@ fn find_cycle(viafile: &Viafile) -> Option<Vec<String>> {
 }
 
 fn dfs_cycle(
-    viafile: &Viafile,
+    taskfile: &Taskfile,
     key: &str,
     color: &mut std::collections::HashMap<String, u8>,
     stack: &mut Vec<String>,
@@ -254,7 +254,7 @@ fn dfs_cycle(
     color.insert(key.to_string(), 1);
     stack.push(key.to_string());
     // Every dep is known to resolve (Phase A passed), so this lookup is safe.
-    let task = viafile.tasks.get(key).expect("task exists");
+    let task = taskfile.tasks.get(key).expect("task exists");
     for dep in &task.deps {
         let dep_key = dep.path.join("::");
         match color.get(&dep_key).copied().unwrap_or(0) {
@@ -266,7 +266,7 @@ fn dfs_cycle(
                 return Some(cycle);
             }
             0 => {
-                if let Some(cycle) = dfs_cycle(viafile, &dep_key, color, stack) {
+                if let Some(cycle) = dfs_cycle(taskfile, &dep_key, color, stack) {
                     return Some(cycle);
                 }
             }
@@ -290,15 +290,15 @@ pub struct PlanNode {
 /// resolved against the declaring task's bound args as we descend, so the same
 /// task reached with *different* args runs once per distinct argument set.
 /// Assumes a validated (acyclic, fully-resolved, arg-checked) graph.
-pub fn plan(viafile: &Viafile, root: &[String], root_args: &[(String, String)]) -> Vec<PlanNode> {
+pub fn plan(taskfile: &Taskfile, root: &[String], root_args: &[(String, String)]) -> Vec<PlanNode> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut order: Vec<PlanNode> = Vec::new();
-    plan_visit(viafile, root, root_args.to_vec(), &mut visited, &mut order);
+    plan_visit(taskfile, root, root_args.to_vec(), &mut visited, &mut order);
     order
 }
 
 fn plan_visit(
-    viafile: &Viafile,
+    taskfile: &Taskfile,
     path: &[String],
     args: Vec<(String, String)>,
     visited: &mut HashSet<String>,
@@ -307,16 +307,16 @@ fn plan_visit(
     if !visited.insert(plan_key(path, &args)) {
         return; // this task+args pairing is already scheduled
     }
-    if let Some(task) = viafile.get(path) {
+    if let Some(task) = taskfile.get(path) {
         for dep in &task.deps {
             // Fill this dep's `{{param}}` args from the current task's args,
             // then bind the resulting values to the dep target's parameters.
             let values: Vec<String> = dep.args.iter().map(|a| substitute(a, &args)).collect();
-            let bound = match viafile.get(&dep.path) {
+            let bound = match taskfile.get(&dep.path) {
                 Some(target) => bind_positional(&target.params, &values),
                 None => Vec::new(), // unreachable on a validated graph
             };
-            plan_visit(viafile, &dep.path, bound, visited, order);
+            plan_visit(taskfile, &dep.path, bound, visited, order);
         }
         order.push(PlanNode {
             path: path.to_vec(),

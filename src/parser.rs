@@ -1,4 +1,4 @@
-//! Parser for the `viafile` format.
+//! Parser for the `tasks.alors` format.
 //!
 //! Grammar (v0, minimal subset):
 //!   - A task header is a line of the form:  NAME [params...] : [deps...]
@@ -48,7 +48,7 @@ pub struct Task {
     pub line: usize,
     /// Label of the file this task was parsed from (for error messages).
     /// The pure parser doesn't know filenames; the loader stamps the real path
-    /// when merging imports. Defaults to "viafile" for a standalone parse.
+    /// when merging imports. Defaults to "tasks.alors" for a standalone parse.
     pub source: String,
 }
 
@@ -79,17 +79,17 @@ pub struct ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "viafile:{}: {}", self.line, self.message)
+        write!(f, "tasks.alors:{}: {}", self.line, self.message)
     }
 }
 
 /// The parsed model: an ordered collection of tasks keyed by their path,
 /// plus any `import` directives the loader still needs to resolve.
 #[derive(Debug, Default)]
-pub struct Viafile {
+pub struct Taskfile {
     /// path (joined by "::") -> Task
     pub tasks: BTreeMap<String, Task>,
-    /// `import` directives in declaration order. Empty in a fully-merged Viafile.
+    /// `import` directives in declaration order. Empty in a fully-merged Taskfile.
     pub imports: Vec<Import>,
     /// name -> value of this file's `name := value` constants. Already applied
     /// to this file's tasks by `parse`; kept for introspection. The loader does
@@ -97,7 +97,7 @@ pub struct Viafile {
     pub constants: BTreeMap<String, String>,
 }
 
-impl Viafile {
+impl Taskfile {
     pub fn get(&self, path: &[String]) -> Option<&Task> {
         self.tasks.get(&path.join("::"))
     }
@@ -376,8 +376,8 @@ fn parse_header(
     Ok((path, params, deps))
 }
 
-pub fn parse(src: &str) -> Result<Viafile, ParseError> {
-    let mut viafile = Viafile::default();
+pub fn parse(src: &str) -> Result<Taskfile, ParseError> {
+    let mut taskfile = Taskfile::default();
     let lines: Vec<&str> = src.lines().collect();
     let mut i = 0;
 
@@ -401,7 +401,7 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
 
         // An `import "path" [as ns]` directive (a top-level line, no body).
         if looks_like_import(raw) {
-            viafile.imports.push(parse_import(raw, lineno)?);
+            taskfile.imports.push(parse_import(raw, lineno)?);
             i += 1;
             continue;
         }
@@ -409,13 +409,13 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
         // A `name := value` constant (a top-level line, no body).
         if let Some(parsed) = parse_constant(raw, lineno) {
             let (name, value) = parsed?;
-            if viafile.constants.contains_key(&name) {
+            if taskfile.constants.contains_key(&name) {
                 return Err(ParseError {
                     line: lineno,
                     message: format!("constant `{}` is already defined", name),
                 });
             }
-            viafile.constants.insert(name, value);
+            taskfile.constants.insert(name, value);
             i += 1;
             continue;
         }
@@ -464,14 +464,14 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
             .collect();
 
         let key = path.join("::");
-        if viafile.tasks.contains_key(&key) {
+        if taskfile.tasks.contains_key(&key) {
             return Err(ParseError {
                 line: lineno,
                 message: format!("duplicate task `{}`", key),
             });
         }
 
-        viafile.tasks.insert(
+        taskfile.tasks.insert(
             key,
             Task {
                 path,
@@ -479,15 +479,15 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
                 deps,
                 body,
                 line: lineno,
-                source: "viafile".to_string(),
+                source: "tasks.alors".to_string(),
             },
         );
 
         i = j;
     }
 
-    substitute_constants(&mut viafile);
-    Ok(viafile)
+    substitute_constants(&mut taskfile);
+    Ok(taskfile)
 }
 
 /// Replace `{{name}}` with each constant's value in task bodies and dependency
@@ -496,8 +496,8 @@ pub fn parse(src: &str) -> Result<Viafile, ParseError> {
 /// already applied and inert. A name that is also one of the task's own params
 /// is skipped: arguments take precedence, and are bound later (dep args at plan
 /// time, the body at run time).
-fn substitute_constants(viafile: &mut Viafile) {
-    let Viafile { tasks, constants, .. } = viafile;
+fn substitute_constants(taskfile: &mut Taskfile) {
+    let Taskfile { tasks, constants, .. } = taskfile;
     for task in tasks.values_mut() {
         for (name, value) in constants.iter() {
             if task.params.iter().any(|p| p == name) {

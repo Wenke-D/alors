@@ -1,6 +1,6 @@
-//! via — a CLI for your project.
+//! alors — a CLI for your project.
 //!
-//! v0 entry point. Enforces the strict cwd rule (a `viafile` must exist in the
+//! v0 entry point. Enforces the strict cwd rule (a `tasks.alors` must exist in the
 //! current directory), parses it, and resolves/executes the requested task.
 
 mod executor;
@@ -12,23 +12,23 @@ mod validate;
 use std::path::Path;
 use std::process::exit;
 
-fn print_listing(viafile: &parser::Viafile) {
-    let top = viafile.children(&[]);
+fn print_listing(taskfile: &parser::Taskfile) {
+    let top = taskfile.children(&[]);
     if top.is_empty() {
-        println!("viafile has no tasks.");
+        println!("tasks.alors has no tasks.");
         return;
     }
     println!("Available commands:");
     for name in &top {
         let path = vec![name.clone()];
-        let is_task = viafile.get(&path).is_some();
-        let is_ns = viafile.is_namespace(&path);
+        let is_task = taskfile.get(&path).is_some();
+        let is_ns = taskfile.is_namespace(&path);
         let marker = match (is_task, is_ns) {
             (true, true) => format!("{} (+ subcommands)", name),
             (false, true) => format!("{} <subcommand>", name),
             _ => name.clone(),
         };
-        if let Some(r) = viafile.get(&path) {
+        if let Some(r) = taskfile.get(&path) {
             if !r.params.is_empty() {
                 println!("  {}  {}", marker, r.params.join(" "));
                 continue;
@@ -38,18 +38,18 @@ fn print_listing(viafile: &parser::Viafile) {
     }
 }
 
-fn print_help(viafile: Option<&parser::Viafile>) {
-    println!("via — a CLI for your project");
+fn print_help(taskfile: Option<&parser::Taskfile>) {
+    println!("alors — a CLI for your project");
     println!();
     println!("Usage:");
-    println!("  via                     list the tasks in the viafile");
-    println!("  via <task> [args...]    run a task (namespaced: via docker build)");
-    println!("  via help | --help       show this help");
-    println!("  via --help-ai           usage notes for AI agents (machine-oriented)");
-    println!("  via --version           print the version");
+    println!("  alors                     list the tasks in tasks.alors");
+    println!("  alors <task> [args...]    run a task (namespaced: alors docker build)");
+    println!("  alors --help              show this help");
+    println!("  alors --help-ai           usage notes for AI agents (machine-oriented)");
+    println!("  alors --version           print the version");
     println!();
-    println!("via reads the `viafile` in the current directory.");
-    if let Some(v) = viafile {
+    println!("alors reads the `tasks.alors` file in the current directory.");
+    if let Some(v) = taskfile {
         println!();
         print_listing(v);
     }
@@ -57,28 +57,28 @@ fn print_help(viafile: Option<&parser::Viafile>) {
 
 fn print_help_ai() {
     println!(
-        r#"# via — usage notes for AI agents
+        r#"# alors — usage notes for AI agents
 
-via is a project-local CLI. It reads the `viafile` in the current working
-directory (never parent directories) and runs the named task from it.
-Source & docs: https://github.com/Wenke-D/via
+alors is a project-local CLI. It reads the `tasks.alors` file in the current
+working directory (never parent directories) and runs the named task from it.
+Source & docs: https://github.com/Wenke-D/alors
 
 ## Invoking
-- `via`                    list available tasks in this project
-- `via <task> [args...]`   run one task; positional args fill its parameters
-- `via <ns> <task>`        run a namespaced task (defined as `ns::task`)
+- `alors`                    list available tasks in this project
+- `alors <task> [args...]`   run one task; positional args fill its parameters
+- `alors <ns> <task>`        run a namespaced task (defined as `ns::task`)
 
 Exactly ONE task per invocation. Tokens after the task are its arguments or
 a subcommand path — never additional tasks. To run things in sequence,
-declare dependencies in the viafile instead.
+declare dependencies in tasks.alors instead.
 
 ## Exit codes
 - 0  success
 - 1  resolution error (unknown task, wrong argument count)
-- 2  environment error (missing viafile, parse error, validation error)
+- 2  environment error (missing tasks.alors, parse error, validation error)
 - otherwise: the exit code of the failing shell command
 
-## viafile syntax (when reading or writing one)
+## tasks.alors syntax (when reading or writing one)
 - `name:` then an indented body of shell commands defines a task.
 - `name param1 param2:` declares positional parameters — all required, bound
   in order. Use them in the body as `{{{{param}}}}` or `$param`.
@@ -89,9 +89,9 @@ declare dependencies in the viafile instead.
 - `name: dep1, dep2 arg` — comma-separated dependencies run first, in order,
   deps-first; a dep may carry fixed positional args. Same dep + same args
   runs at most once per invocation.
-- `ns::name:` groups a task under a namespace (invoked `via ns name`).
-  A plain `ns:` task alongside it is the namespace default for `via ns`.
-- `import "file.via"` merges tasks flat; `import "file.via" as ns` nests
+- `ns::name:` groups a task under a namespace (invoked `alors ns name`).
+  A plain `ns:` task alongside it is the namespace default for `alors ns`.
+- `import "file.alors"` merges tasks flat; `import "file.alors" as ns` nests
   the whole file under a namespace.
 - Each body runs in a single `sh` with `set -e` (fail-fast; `cd` and
   variables persist across lines). Start a body with `set +e` to tolerate
@@ -99,92 +99,84 @@ declare dependencies in the viafile instead.
 - The whole file is validated before anything runs: name clashes, unknown
   deps, wrong arg counts, and cycles are up-front errors.
 
-Run `via` (no arguments) to list this project's tasks."#
+Run `alors` (no arguments) to list this project's tasks."#
     );
 }
 
-/// Best-effort load of a valid viafile, purely to enrich help output with the
+/// Best-effort load of a valid taskfile, purely to enrich help output with the
 /// task listing. Any problem — missing file, parse error, validation error —
-/// just means "no listing"; help itself never depends on the viafile.
-fn load_for_help(path: &Path) -> Option<parser::Viafile> {
+/// just means "no listing"; help itself never depends on the taskfile.
+fn load_for_help(path: &Path) -> Option<parser::Taskfile> {
     if !path.exists() {
         return None;
     }
-    let viafile = loader::load(path).ok()?;
-    validate::validate(&viafile).is_ok().then_some(viafile)
+    let taskfile = loader::load(path).ok()?;
+    validate::validate(&taskfile).is_ok().then_some(taskfile)
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let first = args.first().map(String::as_str);
     let ai_help = first == Some("--help-ai");
-    let help_requested = ai_help || matches!(first, Some("help" | "--help"));
+    let help_requested = ai_help || first == Some("--help");
 
-    // Like help, the version never depends on the viafile. The value comes from
+    // Like help, the version never depends on the taskfile. The value comes from
     // Cargo.toml at compile time, so it cannot drift from the release tag.
     if first == Some("--version") {
-        println!("via {}", env!("CARGO_PKG_VERSION"));
+        println!("alors {}", env!("CARGO_PKG_VERSION"));
         exit(0);
     }
 
-    let viafile_path = Path::new("viafile");
+    let taskfile_path = Path::new("tasks.alors");
 
-    // Help comes first, before the viafile is required to exist (or be valid):
-    // a loadable viafile only adds the task listing to the output. The flags
-    // always mean help; the bare word `help` defers to a task the viafile
-    // legitimately named `help`, mirroring the `import:` rule.
+    // Help comes first, before the taskfile is required to exist (or be valid):
+    // a loadable taskfile only adds the task listing to the output. Help is
+    // flag-only (`--help`); the bare word `help` is an ordinary task name, so
+    // a task you named `help` is invoked like any other.
     if help_requested {
-        let loaded = load_for_help(viafile_path);
-        let help_path = vec!["help".to_string()];
-        let user_defined_help = first == Some("help")
-            && loaded
-                .as_ref()
-                .is_some_and(|v| v.get(&help_path).is_some() || v.is_namespace(&help_path));
-        if !user_defined_help {
-            if ai_help {
-                // The AI notes describe the tool itself; task discovery is `via`.
-                print_help_ai();
-            } else {
-                print_help(loaded.as_ref());
-            }
-            exit(0);
+        if ai_help {
+            // The AI notes describe the tool itself; task discovery is `alors`.
+            print_help_ai();
+        } else {
+            print_help(load_for_help(taskfile_path).as_ref());
         }
+        exit(0);
     }
 
-    if !viafile_path.exists() {
-        eprintln!("via: no `viafile` in the current directory");
+    if !taskfile_path.exists() {
+        eprintln!("alors: no `tasks.alors` in the current directory");
         exit(2);
     }
 
-    // Read the root viafile and resolve its imports into one merged model.
-    let viafile = match loader::load(viafile_path) {
+    // Read the root taskfile and resolve its imports into one merged model.
+    let taskfile = match loader::load(taskfile_path) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("via: {}", e);
+            eprintln!("alors: {}", e);
             exit(2);
         }
     };
 
     // Phase 1: validate the whole dependency graph before running anything.
-    if let Err(errors) = validate::validate(&viafile) {
+    if let Err(errors) = validate::validate(&taskfile) {
         for e in &errors {
-            eprintln!("via: {}", e);
+            eprintln!("alors: {}", e);
         }
         exit(2);
     }
 
     if args.is_empty() {
-        print_listing(&viafile);
+        print_listing(&taskfile);
         exit(0);
     }
 
-    match resolver::resolve(&viafile, &args) {
+    match resolver::resolve(&taskfile, &args) {
         Ok(resolved) => {
-            let code = executor::execute(&viafile, &resolved);
+            let code = executor::execute(&taskfile, &resolved);
             exit(code);
         }
         Err(e) => {
-            eprintln!("via: {}", e);
+            eprintln!("alors: {}", e);
             exit(1);
         }
     }
