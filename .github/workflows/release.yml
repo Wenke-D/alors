@@ -45,3 +45,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ matrix.asset }}
+          # Auto-list the commits since the previous tag on the release page.
+          # Hand-written highlights (breaking changes etc.) are added on top
+          # when cutting the release.
+          generate_release_notes: true
