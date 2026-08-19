@@ -77,11 +77,12 @@ Run a task by name:
 via configure        # runs: cmake -S . -B build
 via clean            # runs: rm -rf build
 via                  # with no task, lists everything available
-via help             # usage + the task list (also --help / -h)
+via help             # usage + the task list (also --help)
 via --help-ai        # usage notes written for AI agents
+via --version        # print the version
 ```
 
-> `--help` and `-h` always show via's help. The bare word `help` does too,
+> `--help` always shows via's help. The bare word `help` does too,
 > unless the viafile defines its own `help` task — a name you chose keeps
 > working, same as the `import:` rule below.
 

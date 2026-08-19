@@ -3,7 +3,7 @@
 //! Grammar (v0, minimal subset):
 //!   - A task header is a line of the form:  NAME [params...] : [deps...]
 //!       NAME may contain `::` namespace separators, e.g. `docker::build`
-//!       params are space-separated bare identifiers, optionally `name?` (optional)
+//!       params are space-separated bare identifiers, all required
 //!       deps (after the `:`) are task references run before the body, e.g.
 //!       `build: configure compile`. Deps take no arguments.
 //!   - A constant is a top-level line `name := value` — a literal, immutable
@@ -20,13 +20,6 @@
 
 use std::collections::BTreeMap;
 
-/// A single positional parameter of a task.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Param {
-    pub name: String,
-    pub optional: bool,
-}
-
 /// A dependency edge: a task to run first, with the positional arguments to pass
 /// it. `args` may contain `{{param}}` references to the *declaring* task's
 /// params (resolved when the plan is built); anything else is a literal value.
@@ -41,7 +34,9 @@ pub struct Dep {
 pub struct Task {
     /// Full dotted path, e.g. ["docker", "build"] for `docker::build`.
     pub path: Vec<String>,
-    pub params: Vec<Param>,
+    /// Positional parameter names, all required — every invocation supplies a
+    /// value for each, so a call site always shows the task's full signature.
+    pub params: Vec<String>,
     /// Dependencies, in declaration order — comma-separated after the `:`, each
     /// a task reference plus optional args, e.g. `ci: test integration, lint` ->
     /// [Dep{test, [integration]}, Dep{lint, []}]. Run (deduped, deps-first)
@@ -304,7 +299,7 @@ fn parse_constant(line: &str, lineno: usize) -> Option<Result<(String, String), 
 fn parse_header(
     line: &str,
     lineno: usize,
-) -> Result<(Vec<String>, Vec<Param>, Vec<Dep>), ParseError> {
+) -> Result<(Vec<String>, Vec<String>, Vec<Dep>), ParseError> {
     let trimmed = line.trim();
     let bytes = trimmed.as_bytes();
     let mut sep = None;
@@ -347,34 +342,14 @@ fn parse_header(
 
     // Params (left of `:`).
     let mut params = Vec::new();
-    let mut seen_optional = false;
     for tok in parts {
-        let (raw, optional) = if let Some(stripped) = tok.strip_suffix('?') {
-            (stripped, true)
-        } else {
-            (tok, false)
-        };
-        if optional {
-            seen_optional = true;
-        } else if seen_optional {
-            return Err(ParseError {
-                line: lineno,
-                message: format!(
-                    "required parameter `{}` cannot follow an optional parameter",
-                    raw
-                ),
-            });
-        }
-        if raw.is_empty() || !raw.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        if !tok.chars().all(|c| c.is_alphanumeric() || c == '_') {
             return Err(ParseError {
                 line: lineno,
                 message: format!("invalid parameter name `{}`", tok),
             });
         }
-        params.push(Param {
-            name: raw.to_string(),
-            optional,
-        });
+        params.push(tok.to_string());
     }
 
     // Deps (right of `:`) are comma-separated. Within one dep, whitespace splits
@@ -525,7 +500,7 @@ fn substitute_constants(viafile: &mut Viafile) {
     let Viafile { tasks, constants, .. } = viafile;
     for task in tasks.values_mut() {
         for (name, value) in constants.iter() {
-            if task.params.iter().any(|p| p.name == *name) {
+            if task.params.iter().any(|p| p == name) {
                 continue;
             }
             let pattern = format!("{{{{{}}}}}", name);

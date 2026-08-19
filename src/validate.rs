@@ -12,7 +12,7 @@
 //! Execution order (`plan`) is a deduped, deps-first, post-order DFS: each task
 //! runs at most once per invocation, dependencies before dependents.
 
-use crate::parser::{Param, Viafile};
+use crate::parser::Viafile;
 use std::collections::HashSet;
 
 #[derive(Debug)]
@@ -150,20 +150,16 @@ pub fn validate(viafile: &Viafile) -> Result<(), Vec<ValidateError>> {
         let from = task.display_name();
         let line = task.line;
         let source = task.source.clone();
-        let own_params: Vec<&str> = task.params.iter().map(|p| p.name.as_str()).collect();
+        let own_params: Vec<&str> = task.params.iter().map(|p| p.as_str()).collect();
         for dep in &task.deps {
             let dep_name = dep.path.join("::");
             match viafile.get(&dep.path) {
                 Some(target) => {
                     let got = dep.args.len();
                     let max = target.params.len();
-                    // Positional fill: the params past `got` that aren't optional
-                    // are the ones the dependency failed to supply.
-                    let missing: Vec<String> = target.params[got.min(max)..]
-                        .iter()
-                        .filter(|p| !p.optional)
-                        .map(|p| p.name.clone())
-                        .collect();
+                    // Positional fill: the params past `got` are the ones the
+                    // dependency failed to supply.
+                    let missing: Vec<String> = target.params[got.min(max)..].to_vec();
                     if !missing.is_empty() {
                         errors.push(ValidateError::DependencyNeedsArgs {
                             source: source.clone(),
@@ -349,13 +345,13 @@ fn substitute(text: &str, args: &[(String, String)]) -> String {
     out
 }
 
-/// Bind positional values to a target's parameters (optionals default to empty).
-/// Counts were checked in `validate`, so surplus values cannot reach here.
-fn bind_positional(params: &[Param], values: &[String]) -> Vec<(String, String)> {
+/// Bind positional values to a target's parameters. Counts were checked in
+/// `validate`, so a value exists for every param and surplus cannot reach here.
+fn bind_positional(params: &[String], values: &[String]) -> Vec<(String, String)> {
     params
         .iter()
         .enumerate()
-        .map(|(i, p)| (p.name.clone(), values.get(i).cloned().unwrap_or_default()))
+        .map(|(i, p)| (p.clone(), values.get(i).cloned().unwrap_or_default()))
         .collect()
 }
 

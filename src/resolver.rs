@@ -229,19 +229,12 @@ pub fn resolve<'a>(viafile: &'a Viafile, tokens: &[String]) -> Result<Resolved<'
     let mut args = Vec::new();
     for (k, param) in task.params.iter().enumerate() {
         if let Some(val) = rest.get(k) {
-            args.push((param.name.clone(), val.clone()));
-        } else if param.optional {
-            args.push((param.name.clone(), String::new()));
+            args.push((param.clone(), val.clone()));
         } else {
-            // Missing required param. Collect all missing for a good message.
-            let missing: Vec<String> = task.params[k..]
-                .iter()
-                .filter(|p| !p.optional)
-                .map(|p| p.name.clone())
-                .collect();
+            // Missing params. Collect all of them for a good message.
             return Err(ResolveError::MissingParams {
                 task: task_name,
-                missing,
+                missing: task.params[k..].to_vec(),
             });
         }
     }

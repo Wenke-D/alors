@@ -30,12 +30,7 @@ fn print_listing(viafile: &parser::Viafile) {
         };
         if let Some(r) = viafile.get(&path) {
             if !r.params.is_empty() {
-                let ps: Vec<String> = r
-                    .params
-                    .iter()
-                    .map(|p| if p.optional { format!("[{}]", p.name) } else { p.name.clone() })
-                    .collect();
-                println!("  {}  {}", marker, ps.join(" "));
+                println!("  {}  {}", marker, r.params.join(" "));
                 continue;
             }
         }
@@ -49,8 +44,9 @@ fn print_help(viafile: Option<&parser::Viafile>) {
     println!("Usage:");
     println!("  via                     list the tasks in the viafile");
     println!("  via <task> [args...]    run a task (namespaced: via docker build)");
-    println!("  via help | --help | -h  show this help");
+    println!("  via help | --help       show this help");
     println!("  via --help-ai           usage notes for AI agents (machine-oriented)");
+    println!("  via --version           print the version");
     println!();
     println!("via reads the `viafile` in the current directory.");
     if let Some(v) = viafile {
@@ -84,8 +80,8 @@ declare dependencies in the viafile instead.
 
 ## viafile syntax (when reading or writing one)
 - `name:` then an indented body of shell commands defines a task.
-- `name param1 [param2]:` declares positional parameters; `[x]` is optional.
-  Use them in the body as `{{{{param}}}}` or `$param`.
+- `name param1 param2:` declares positional parameters — all required, bound
+  in order. Use them in the body as `{{{{param}}}}` or `$param`.
 - `name := value` (top level) defines a constant: an immutable literal usable
   as `{{{{name}}}}` in bodies and dependency arguments. File-local (imports
   neither see nor leak it); a task param with the same name takes precedence.
@@ -122,7 +118,14 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let first = args.first().map(String::as_str);
     let ai_help = first == Some("--help-ai");
-    let help_requested = ai_help || matches!(first, Some("help" | "--help" | "-h"));
+    let help_requested = ai_help || matches!(first, Some("help" | "--help"));
+
+    // Like help, the version never depends on the viafile. The value comes from
+    // Cargo.toml at compile time, so it cannot drift from the release tag.
+    if first == Some("--version") {
+        println!("via {}", env!("CARGO_PKG_VERSION"));
+        exit(0);
+    }
 
     let viafile_path = Path::new("viafile");
 
