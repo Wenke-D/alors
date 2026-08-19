@@ -1,6 +1,6 @@
 [package]
 name = "via"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "A CLI for your project: runs named tasks defined in a viafile."
 license = "MIT"

@@ -107,30 +107,48 @@ Run `via` (no arguments) to list this project's tasks."#
     );
 }
 
+/// Best-effort load of a valid viafile, purely to enrich help output with the
+/// task listing. Any problem — missing file, parse error, validation error —
+/// just means "no listing"; help itself never depends on the viafile.
+fn load_for_help(path: &Path) -> Option<parser::Viafile> {
+    if !path.exists() {
+        return None;
+    }
+    let viafile = loader::load(path).ok()?;
+    validate::validate(&viafile).is_ok().then_some(viafile)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let ai_help = args.first().map(String::as_str) == Some("--help-ai");
-    let help_requested = ai_help
-        || matches!(
-            args.first().map(String::as_str),
-            Some("help" | "--help" | "-h")
-        );
-    let show_help = |viafile: Option<&parser::Viafile>| {
-        if ai_help {
-            // The AI notes describe the tool itself; task discovery is `via`.
-            print_help_ai();
-        } else {
-            print_help(viafile);
-        }
-    };
+    let first = args.first().map(String::as_str);
+    let ai_help = first == Some("--help-ai");
+    let help_requested = ai_help || matches!(first, Some("help" | "--help" | "-h"));
 
     let viafile_path = Path::new("viafile");
-    if !viafile_path.exists() {
-        // Help still works without a viafile — just without the task listing.
-        if help_requested {
-            show_help(None);
+
+    // Help comes first, before the viafile is required to exist (or be valid):
+    // a loadable viafile only adds the task listing to the output. The flags
+    // always mean help; the bare word `help` defers to a task the viafile
+    // legitimately named `help`, mirroring the `import:` rule.
+    if help_requested {
+        let loaded = load_for_help(viafile_path);
+        let help_path = vec!["help".to_string()];
+        let user_defined_help = first == Some("help")
+            && loaded
+                .as_ref()
+                .is_some_and(|v| v.get(&help_path).is_some() || v.is_namespace(&help_path));
+        if !user_defined_help {
+            if ai_help {
+                // The AI notes describe the tool itself; task discovery is `via`.
+                print_help_ai();
+            } else {
+                print_help(loaded.as_ref());
+            }
             exit(0);
         }
+    }
+
+    if !viafile_path.exists() {
         eprintln!("via: no `viafile` in the current directory");
         exit(2);
     }
@@ -139,10 +157,6 @@ fn main() {
     let viafile = match loader::load(viafile_path) {
         Ok(v) => v,
         Err(e) => {
-            if help_requested {
-                show_help(None);
-                exit(0);
-            }
             eprintln!("via: {}", e);
             exit(2);
         }
@@ -150,26 +164,10 @@ fn main() {
 
     // Phase 1: validate the whole dependency graph before running anything.
     if let Err(errors) = validate::validate(&viafile) {
-        if help_requested {
-            show_help(None);
-            exit(0);
-        }
         for e in &errors {
             eprintln!("via: {}", e);
         }
         exit(2);
-    }
-
-    if help_requested {
-        // The flags always mean help; the bare word defers to a task the
-        // viafile legitimately named `help`, mirroring the `import:` rule.
-        let help_path = vec!["help".to_string()];
-        let user_defined_help = args[0] == "help"
-            && (viafile.get(&help_path).is_some() || viafile.is_namespace(&help_path));
-        if !user_defined_help {
-            show_help(Some(&viafile));
-            exit(0);
-        }
     }
 
     if args.is_empty() {
