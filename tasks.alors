@@ -48,3 +48,33 @@ install:
         echo "writing $dest needs elevated permissions..."
         sudo install -m 755 target/release/alors "$dest" && echo "installed -> $dest"
     fi
+
+# cut a release: tag the version in Cargo.toml and push it — GitHub Actions
+# builds the binaries and opens the release for the tag. Bump the version and
+# commit it first; this task only ships what's already committed.
+publish: ci
+    version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+    tag="v$version"
+
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "[publish] working tree is dirty — commit before releasing"
+        exit 1
+    fi
+    if [ "$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then
+        echo "[publish] not on main — releases are cut from main"
+        exit 1
+    fi
+    if git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null; then
+        echo "[publish] $tag already exists — bump the version in Cargo.toml first"
+        exit 1
+    fi
+
+    echo "[publish] releasing $tag"
+    git tag "$tag"
+    git push origin main
+    git push origin "$tag"
+
+    echo "[publish] pushed — Actions is building the binaries:"
+    echo "  https://github.com/Wenke-D/alors/actions"
+    echo "[publish] once it's green, add the highlights on top of the auto notes:"
+    echo "  https://github.com/Wenke-D/alors/releases/tag/$tag"
