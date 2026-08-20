@@ -39,6 +39,34 @@ right-click → Open the first time).
 Prefer to build it yourself? `cargo build --release` (or `alors install`, which
 builds and installs to `/usr/local/bin`).
 
+## Shell completion
+
+`alors` can complete your project's own task names — including namespaces, so
+`alors docker <TAB>` offers that namespace's subcommands. The completion is
+live: it reads the `tasks.alors` of the directory you're standing in, so a task
+you add is completable immediately, with nothing to regenerate.
+
+**zsh**
+
+```
+mkdir -p ~/.zfunc
+alors --completion-script zsh > ~/.zfunc/_alors
+```
+
+and make sure `~/.zshrc` has, before `compinit` runs:
+
+```zsh
+fpath+=(~/.zfunc)
+autoload -Uz compinit && compinit
+```
+
+Then open a new shell (or `exec zsh`).
+
+The script itself holds no knowledge of your tasks: at every `<TAB>` it hands
+the words you've typed to `alors --complete` and offers back what that prints.
+Where `alors` has nothing to suggest — past a task name, where the remaining
+words are that task's arguments — completion falls back to file names.
+
 ## Features
 
 - **Tasks in a `tasks.alors` file.** Define a command once; run it as
@@ -47,6 +75,8 @@ builds and installs to `/usr/local/bin`).
 - **Constants.** `version := 1.4.2` shares a literal value across tasks.
 - **Sequencing.** A task can depend on other tasks, which run first, in order.
 - **Subcommands.** Tasks can be grouped into namespaces: `alors docker build`.
+- **Shell completion.** `<TAB>` completes your project's own task names —
+  see [Shell completion](#shell-completion).
 - **Validated up front.** The whole file is checked before anything runs —
   unknown dependencies and dependency cycles are reported, not discovered
   mid-run.

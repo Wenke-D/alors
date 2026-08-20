@@ -3,6 +3,7 @@
 //! v0 entry point. Enforces the strict cwd rule (a `tasks.alors` must exist in the
 //! current directory), parses it, and resolves/executes the requested task.
 
+mod complete;
 mod executor;
 mod loader;
 mod parser;
@@ -42,11 +43,13 @@ fn print_help(taskfile: Option<&parser::Taskfile>) {
     println!("alors — a CLI for your project");
     println!();
     println!("Usage:");
-    println!("  alors                     list the tasks in tasks.alors");
-    println!("  alors <task> [args...]    run a task (namespaced: alors docker build)");
-    println!("  alors --help              show this help");
-    println!("  alors --help-ai           usage notes for AI agents (machine-oriented)");
-    println!("  alors --version           print the version");
+    println!("  alors                              list the tasks in tasks.alors");
+    println!("  alors <task> [args...]             run a task (namespaced: alors docker build)");
+    println!("  alors --help                       show this help");
+    println!("  alors --help-ai                    usage notes for AI agents");
+    println!("  alors --version                    print the version");
+    println!("  alors --completion-script <shell>  print a shell completion script (zsh)");
+    println!("  alors --complete [words...]        completion candidates, for those scripts");
     println!();
     println!("alors reads the `tasks.alors` file in the current directory.");
     if let Some(v) = taskfile {
@@ -103,10 +106,11 @@ Run `alors` (no arguments) to list this project's tasks."#
     );
 }
 
-/// Best-effort load of a valid taskfile, purely to enrich help output with the
-/// task listing. Any problem — missing file, parse error, validation error —
-/// just means "no listing"; help itself never depends on the taskfile.
-fn load_for_help(path: &Path) -> Option<parser::Taskfile> {
+/// Best-effort, silent load of a valid taskfile, for the paths that must work
+/// with or without one: help (which the taskfile only enriches with a listing)
+/// and completion (which must never spew errors into a shell prompt). Any
+/// problem — missing file, parse error, validation error — just means `None`.
+fn load_quietly(path: &Path) -> Option<parser::Taskfile> {
     if !path.exists() {
         return None;
     }
@@ -127,6 +131,27 @@ fn main() {
         exit(0);
     }
 
+    // Printing a completion script is likewise taskfile-independent: the script
+    // is static, and everything project-specific reaches it later, at <TAB>
+    // time, through `--complete`.
+    if first == Some("--completion-script") {
+        let shell = args.get(1).map(String::as_str);
+        match shell.and_then(complete::script) {
+            Some(script) => {
+                print!("{}", script);
+                exit(0);
+            }
+            None => {
+                match shell {
+                    Some(s) => eprintln!("alors: no completion script for `{}`", s),
+                    None => eprintln!("alors: --completion-script needs a shell"),
+                }
+                eprintln!("  supported shells: {}", complete::SHELLS.join(", "));
+                exit(2);
+            }
+        }
+    }
+
     let taskfile_path = Path::new("tasks.alors");
 
     // Help comes first, before the taskfile is required to exist (or be valid):
@@ -138,7 +163,18 @@ fn main() {
             // The AI notes describe the tool itself; task discovery is `alors`.
             print_help_ai();
         } else {
-            print_help(load_for_help(taskfile_path).as_ref());
+            print_help(load_quietly(taskfile_path).as_ref());
+        }
+        exit(0);
+    }
+
+    // A completion script calls this on every <TAB>, so it never fails and never
+    // prints a diagnostic: outside a project, or on a broken taskfile, there is
+    // simply nothing to suggest.
+    if first == Some("--complete") {
+        let taskfile = load_quietly(taskfile_path);
+        for candidate in complete::candidates(taskfile.as_ref(), &args[1..]) {
+            println!("{}", candidate);
         }
         exit(0);
     }
