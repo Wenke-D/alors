@@ -56,24 +56,20 @@ impl std::fmt::Display for ResolveError {
                 } else {
                     format!(" in `{}`", scope.join(" "))
                 };
-                write!(
-                    f,
-                    "`{}` is not a known command{}. available: {}",
-                    token,
-                    where_,
-                    if available.is_empty() {
-                        "(none)".to_string()
-                    } else {
-                        available.join(", ")
-                    }
-                )
+                if available.is_empty() {
+                    return write!(f, "`{}` is not a known command{}", token, where_);
+                }
+                writeln!(f, "`{}` is not a known command{}", token, where_)?;
+                write_list(f, "available commands:", available)
             }
-            ResolveError::NamespaceNeedsSubcommand { path, available } => write!(
-                f,
-                "`{}` is a namespace, choose a subcommand: {}",
-                path.join(" "),
-                available.join(", ")
-            ),
+            ResolveError::NamespaceNeedsSubcommand { path, available } => {
+                writeln!(
+                    f,
+                    "`{}` is a namespace, not a runnable task",
+                    path.join(" ")
+                )?;
+                write_list(f, "available subcommands:", available)
+            }
             ResolveError::NotSubcommandNorParam {
                 token,
                 task,
@@ -101,6 +97,52 @@ impl std::fmt::Display for ResolveError {
             ),
         }
     }
+}
+
+/// Print a heading, then the entries laid out as an aligned grid: several per
+/// line while they fit the terminal, in reading order (left to right, then
+/// down). One per line gets too tall, one long line gets unreadable.
+fn write_list(
+    f: &mut std::fmt::Formatter<'_>,
+    heading: &str,
+    items: &[String],
+) -> std::fmt::Result {
+    const INDENT: &str = "    ";
+    const GAP: usize = 2;
+
+    write!(f, "  {}", heading)?;
+
+    // Cap the usable width: on a very wide terminal a full-width row of names
+    // is as hard to scan as one long line.
+    let width = terminal_width().min(100).saturating_sub(INDENT.len());
+    let cell = items.iter().map(|i| i.chars().count()).max().unwrap_or(0) + GAP;
+    let columns = (width / cell.max(1)).max(1);
+
+    for (i, item) in items.iter().enumerate() {
+        if i % columns == 0 {
+            write!(f, "\n{}", INDENT)?;
+        } else {
+            write!(f, "{}", " ".repeat(GAP))?;
+        }
+        // Pad every cell but the last of its row, so nothing trails the line.
+        let last_in_row = (i + 1) % columns == 0 || i + 1 == items.len();
+        if last_in_row {
+            write!(f, "{}", item)?;
+        } else {
+            let pad = cell - GAP - item.chars().count();
+            write!(f, "{}{}", item, " ".repeat(pad))?;
+        }
+    }
+    Ok(())
+}
+
+/// Terminal width, from `$COLUMNS` when the shell exports it, else a safe 80.
+fn terminal_width() -> usize {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|c| c.parse::<usize>().ok())
+        .filter(|c| *c >= 20)
+        .unwrap_or(80)
 }
 
 /// A fully resolved invocation: which task to run and the argument bindings.
