@@ -1,6 +1,6 @@
 [package]
 name = "alors"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 description = "A CLI for your project: runs named tasks defined in a tasks.alors file."
 license = "MIT"

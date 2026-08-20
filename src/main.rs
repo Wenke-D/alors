@@ -145,6 +145,7 @@ fn main() {
 
     if !taskfile_path.exists() {
         eprintln!("alors: no `tasks.alors` in the current directory");
+        eprintln!("  run `alors --help` to see how to get started");
         exit(2);
     }
 
