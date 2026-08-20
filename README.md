@@ -81,7 +81,8 @@ words are that task's arguments — completion falls back to file names.
   unknown dependencies and dependency cycles are reported, not discovered
   mid-run.
 - **One file, current directory.** `alors` reads the `tasks.alors` in the
-  directory you run it from. No searching up the tree.
+  directory you run it from. No searching up the tree — or point it somewhere
+  explicitly with [`--taskfile`](#running-a-taskfile-elsewhere).
 
 ## Defining tasks
 
@@ -337,6 +338,46 @@ A few rules, in keeping with alors's "checked up front" stance:
 > A line is read as an import only when it's the word `import` followed by a
 > quoted path (`import "x"`). That keeps a task you legitimately *named* `import`
 > (written `import:`) from being mistaken for a directive.
+
+## Running a taskfile elsewhere
+
+`alors --taskfile <path> <task>` runs a task from a taskfile that isn't in the
+current directory:
+
+```
+alors --taskfile ../other-project/tasks.alors build
+```
+
+The rule is one sentence, with no exceptions:
+
+> `alors --taskfile X <task>` does exactly what `cd $(dirname X) && alors <task>`
+> would do.
+
+**The task runs in its own project's directory**, not yours. That isn't a side
+effect, it's the point: a body is a shell script full of paths that mean
+something relative to its project — `cargo build`, `cmake -S . -B build`,
+`cp target/release/app`. Running another project's commands here would apply
+them to *this* directory, quietly and wrongly. (It's also what imports already
+do: an `import` path resolves relative to the importing file, never to your
+current directory.)
+
+Two consequences worth knowing:
+
+- **Relative paths in arguments** are read by the body, so they're relative to
+  the taskfile's directory, not yours. Pass absolute paths across projects.
+- **The file needn't be called `tasks.alors`.** `--taskfile` takes the path you
+  give it, so a directory can hold many of them —
+  `alors --taskfile tests/fixtures/imports.alors build` — which is how this
+  project's own end-to-end tests are written.
+
+The flag is recognized **before the task name only**. After it, everything is
+the task's arguments, `--taskfile` included — so `alors greet --taskfile` passes
+the literal string `--taskfile` to `greet`. That keeps the one rule that makes
+invocations readable: once a task is selected, the rest are its arguments.
+
+`alors` still never *searches* for a taskfile. It reads the one in the current
+directory, or exactly the file you named — never something found by looking
+around.
 
 ## Releasing
 

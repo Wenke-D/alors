@@ -10,7 +10,7 @@ mod parser;
 mod resolver;
 mod validate;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 
 fn print_listing(taskfile: &parser::Taskfile) {
@@ -45,6 +45,7 @@ fn print_help(taskfile: Option<&parser::Taskfile>) {
     println!("Usage:");
     println!("  alors                              list the tasks in tasks.alors");
     println!("  alors <task> [args...]             run a task (namespaced: alors docker build)");
+    println!("  alors --taskfile <path> <task>     run a task from that file, in its directory");
     println!("  alors --help                       show this help");
     println!("  alors --help-ai                    usage notes for AI agents");
     println!("  alors --version                    print the version");
@@ -70,6 +71,10 @@ Source & docs: https://github.com/Wenke-D/alors
 - `alors`                    list available tasks in this project
 - `alors <task> [args...]`   run one task; positional args fill its parameters
 - `alors <ns> <task>`        run a namespaced task (defined as `ns::task`)
+- `alors --taskfile <path> <task>`   run a task from a taskfile elsewhere; the
+  task runs in THAT file's directory, exactly as `cd $(dirname path) && alors
+  <task>` would. Recognized before the task name only — after it, `--taskfile`
+  is just one of the task's arguments.
 
 Exactly ONE task per invocation. Tokens after the task are its arguments or
 a subcommand path — never additional tasks. To run things in sequence,
@@ -106,6 +111,40 @@ Run `alors` (no arguments) to list this project's tasks."#
     );
 }
 
+/// Split a leading `--taskfile <path>` off the arguments.
+///
+/// The flag is recognized in first position only. Everything after the task
+/// name belongs to the task — a `--taskfile` there is one of its arguments, not
+/// a flag — which is what keeps the resolver's rule intact: once a task is
+/// selected, remaining tokens are arguments only.
+fn take_taskfile(args: &[String]) -> Result<(Option<PathBuf>, &[String]), String> {
+    match args.first().map(String::as_str) {
+        Some("--taskfile") => match args.get(1) {
+            Some(path) => Ok((Some(PathBuf::from(path)), &args[2..])),
+            None => Err("--taskfile needs a path".to_string()),
+        },
+        _ => Ok((None, args)),
+    }
+}
+
+/// Move to the taskfile's own directory, so `--taskfile X <task>` means exactly
+/// `cd $(dirname X) && alors <task>`.
+///
+/// A body is a shell script full of paths relative to its project — `cargo
+/// build`, `cmake -S . -B build`, `cp target/release/alors`. Running another
+/// project's commands from here would apply them to *this* directory, quietly
+/// and wrongly. It is also what the loader already does with imports: they
+/// resolve relative to the importing file, never to the current directory.
+fn enter_taskfile_dir(taskfile_path: &Path) -> Result<(), String> {
+    match taskfile_path.parent() {
+        // No parent component means the file is already in the current
+        // directory — the ordinary case, and nothing to do.
+        Some(dir) if !dir.as_os_str().is_empty() => std::env::set_current_dir(dir)
+            .map_err(|e| format!("cannot enter `{}`: {}", dir.display(), e)),
+        _ => Ok(()),
+    }
+}
+
 /// Best-effort, silent load of a valid taskfile, for the paths that must work
 /// with or without one: help (which the taskfile only enriches with a listing)
 /// and completion (which must never spew errors into a shell prompt). Any
@@ -119,7 +158,18 @@ fn load_quietly(path: &Path) -> Option<parser::Taskfile> {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+
+    // `--taskfile <path>` comes off the front first: it decides *which* file
+    // every later step reads, so everything downstream sees the same argument
+    // list it would have seen from inside that project.
+    let (named_taskfile, args) = match take_taskfile(&argv) {
+        Ok(split) => split,
+        Err(e) => {
+            eprintln!("alors: {}", e);
+            exit(2);
+        }
+    };
     let first = args.first().map(String::as_str);
     let ai_help = first == Some("--help-ai");
     let help_requested = ai_help || first == Some("--help");
@@ -152,7 +202,8 @@ fn main() {
         }
     }
 
-    let taskfile_path = Path::new("tasks.alors");
+    let default_path = PathBuf::from("tasks.alors");
+    let taskfile_path: &Path = named_taskfile.as_deref().unwrap_or(&default_path);
 
     // Help comes first, before the taskfile is required to exist (or be valid):
     // a loadable taskfile only adds the task listing to the output. Help is
@@ -172,16 +223,26 @@ fn main() {
     // prints a diagnostic: outside a project, or on a broken taskfile, there is
     // simply nothing to suggest.
     if first == Some("--complete") {
-        let taskfile = load_quietly(taskfile_path);
-        for candidate in complete::candidates(taskfile.as_ref(), &args[1..]) {
+        // The words being completed are their own little command line, and may
+        // carry a `--taskfile` of their own: complete against the file the user
+        // is pointing at, not the one in this directory.
+        let words = &args[1..];
+        let pointed_at = take_taskfile(words).ok().and_then(|(path, _)| path);
+        let taskfile = load_quietly(pointed_at.as_deref().unwrap_or(taskfile_path));
+        for candidate in complete::candidates(taskfile.as_ref(), words) {
             println!("{}", candidate);
         }
         exit(0);
     }
 
     if !taskfile_path.exists() {
-        eprintln!("alors: no `tasks.alors` in the current directory");
-        eprintln!("  run `alors --help` to see how to get started");
+        match named_taskfile {
+            Some(ref path) => eprintln!("alors: no taskfile at `{}`", path.display()),
+            None => {
+                eprintln!("alors: no `tasks.alors` in the current directory");
+                eprintln!("  run `alors --help` to see how to get started");
+            }
+        }
         exit(2);
     }
 
@@ -207,8 +268,14 @@ fn main() {
         exit(0);
     }
 
-    match resolver::resolve(&taskfile, &args) {
+    match resolver::resolve(&taskfile, args) {
         Ok(resolved) => {
+            // Everything above read the file from where the user is standing;
+            // from here on the task runs beside its own taskfile.
+            if let Err(e) = enter_taskfile_dir(taskfile_path) {
+                eprintln!("alors: {}", e);
+                exit(2);
+            }
             let code = executor::execute(&taskfile, &resolved);
             exit(code);
         }

@@ -76,7 +76,14 @@ fn past_a_leaf_task_there_is_nothing_to_suggest() {
 fn a_leading_dash_offers_flags() {
     assert_eq!(
         complete_in(SAMPLE, &["-"]),
-        vec!["--help", "--help-ai", "--version", "--completion-script", "--complete"]
+        vec![
+            "--taskfile",
+            "--help",
+            "--help-ai",
+            "--version",
+            "--completion-script",
+            "--complete"
+        ]
     );
     assert_eq!(complete_in(SAMPLE, &["--he"]), vec!["--help", "--help-ai"]);
     // Only in first position: a task never takes flags.
@@ -88,6 +95,22 @@ fn completion_script_flag_offers_its_shells() {
     assert_eq!(complete_in(SAMPLE, &["--completion-script", ""]), SHELLS.to_vec());
     assert_eq!(complete_in(SAMPLE, &["--completion-script", "z"]), vec!["zsh"]);
     assert!(complete_in(SAMPLE, &["--completion-script", "zsh", ""]).is_empty());
+}
+
+#[test]
+fn taskfile_hands_its_path_to_the_shell_then_completes_that_file() {
+    // The path itself: nothing from us, so the script offers file names.
+    assert!(complete_in(SAMPLE, &["--taskfile", ""]).is_empty());
+    // Past the path, the words are an ordinary task path — against the file the
+    // caller loaded on our behalf.
+    assert_eq!(
+        complete_in(SAMPLE, &["--taskfile", "other/f.alors", ""]),
+        vec!["build", "docker", "greet"]
+    );
+    assert_eq!(
+        complete_in(SAMPLE, &["--taskfile", "other/f.alors", "docker", ""]),
+        vec!["build", "push"]
+    );
 }
 
 #[test]

@@ -11,6 +11,7 @@ use crate::parser::Taskfile;
 /// Every flag alors accepts, in help order. Offered only when the word being
 /// completed starts with `-` in first position: flags are never task arguments.
 const FLAGS: &[&str] = &[
+    "--taskfile",
     "--help",
     "--help-ai",
     "--version",
@@ -37,6 +38,10 @@ pub fn script(shell: &str) -> Option<&'static str> {
 /// to suggest here", which scripts turn into ordinary file completion: past a
 /// task's name, the remaining words are its arguments, and those are usually
 /// paths.
+///
+/// `taskfile` is whichever file those words point at — the one in the current
+/// directory, or the one named by a leading `--taskfile`, which the caller
+/// resolves before calling.
 pub fn candidates(taskfile: Option<&Taskfile>, words: &[String]) -> Vec<String> {
     let (cur, typed) = match words.split_last() {
         Some((cur, typed)) => (cur.as_str(), typed),
@@ -48,6 +53,19 @@ pub fn candidates(taskfile: Option<&Taskfile>, words: &[String]) -> Vec<String> 
     if typed.is_empty() && cur.starts_with('-') {
         return matching(FLAGS.iter().copied(), cur);
     }
+
+    // `--taskfile` takes a path. Offering nothing hands the word to the shell's
+    // own file completion, which is better at paths than we would be.
+    if typed == ["--taskfile"] {
+        return Vec::new();
+    }
+
+    // Past that path, the words read as an ordinary task path — against the
+    // file they point at, which the caller has already loaded for us.
+    let typed = match typed {
+        [flag, _path, rest @ ..] if flag == "--taskfile" => rest,
+        _ => typed,
+    };
 
     // `--completion-script` is the one flag that takes a value: the shell name.
     if typed.first().map(String::as_str) == Some("--completion-script") {
