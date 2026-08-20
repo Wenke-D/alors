@@ -1,0 +1,15 @@
+# Fixture for the end-to-end CLI tests. Its tasks print rather than build, so a
+# test can assert on stdout without touching the tree.
+
+# where the body actually ran — proves `--taskfile` enters this directory
+where:
+    pwd
+
+greet name:
+    echo "hello {{name}}"
+
+ns::sub:
+    echo "in the namespace"
+
+ns:
+    echo "the namespace default"
